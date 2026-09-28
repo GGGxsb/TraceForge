@@ -1,0 +1,488 @@
+{
+  "created_at": "2026-09-24T10:53:53.108495+00:00",
+  "scope": "TaskBrief gate and generated clarification questions; no full agent tool execution",
+  "evidence_note": "repo_evidence is controlled, simulated read-only tool output; it is not an actual agent tool trace",
+  "case_file": "C:\\Users\\86189\\Documents\\TraceForge\\evals\\clarification_cases.json",
+  "case_sha256": "bb58a0d1c50bf27edf5c3682457b70f1ea511828a0565be9e92f7d1e79af96b4",
+  "model": "deepseek-flash",
+  "base_host": "api.deepseek.com",
+  "summary": {
+    "cases": 20,
+    "completed": 20,
+    "errors": 0,
+    "correct": 19,
+    "tp": 10,
+    "fp": 1,
+    "fn": 0,
+    "tn": 9,
+    "ask_decision_precision": 0.909,
+    "ask_decision_recall": 1.0,
+    "ask_decision_f1": 0.952,
+    "unnecessary_ask_rate": 0.1,
+    "answer_rechecks": 3,
+    "resumed_without_reasking": 3
+  },
+  "results": [
+    {
+      "id": "greeting_hello",
+      "category": "conversation",
+      "prompt": "你好",
+      "ask_user": false,
+      "discovery_evidence_injected": false,
+      "initial_phase": "executing",
+      "phase": "executing",
+      "observed_ask": false,
+      "correct": true,
+      "reason": "普通问候，不需要需求澄清",
+      "gaps": [],
+      "questions": [],
+      "elapsed_seconds": 0.0
+    },
+    {
+      "id": "greeting_checkin",
+      "category": "conversation",
+      "prompt": "在吗？",
+      "ask_user": false,
+      "discovery_evidence_injected": false,
+      "initial_phase": "executing",
+      "phase": "executing",
+      "observed_ask": false,
+      "correct": true,
+      "reason": "The user message is a casual greeting ('在吗？'), not a coding task. No requirement gap exists to clarify; the appropriate response is a simple acknowledgment and an invitation to state the actual task.",
+      "gaps": [],
+      "questions": [],
+      "elapsed_seconds": 1.94
+    },
+    {
+      "id": "capability_question",
+      "category": "conversation",
+      "prompt": "你能帮我查看这个项目的代码吗？",
+      "ask_user": false,
+      "discovery_evidence_injected": false,
+      "initial_phase": "executing",
+      "phase": "executing",
+      "observed_ask": false,
+      "correct": true,
+      "reason": "The request is a general 'look at this project's code' review request. The workspace path is provided and all relevant facts (language, structure, entry points, docs, tests) are discoverable by reading the repository, so nothing blocks execution. The agent can proceed with a standard repository walkthrough: structure, build/run setup, key modules, notable risks, and suggested improvements. Focus-area preference (e.g., security vs. architecture) is low-impact ambiguity that can be handled by covering the general overview first and inviting the user to narrow scope afterwards.",
+      "gaps": [],
+      "questions": [],
+      "elapsed_seconds": 2.87
+    },
+    {
+      "id": "clear_readme_edit",
+      "category": "clear_task",
+      "prompt": "请把 README.md 第一行标题中的 TraceFroge 拼写改成 TraceForge。",
+      "ask_user": false,
+      "discovery_evidence_injected": false,
+      "initial_phase": "executing",
+      "phase": "executing",
+      "observed_ask": false,
+      "correct": true,
+      "reason": "请求明确且无歧义：将 README.md 第一行标题中的拼写错误 'TraceFroge' 更正为 'TraceForge'。目标文件、位置（第一行标题）和期望结果都已指定，属于低风险的文本更正，不涉及范围、架构、安全或验收标准的实质变化。仓库中的具体文本内容属于可直接从仓库读取的事实，不需要向用户澄清。",
+      "gaps": [],
+      "questions": [],
+      "elapsed_seconds": 1.21
+    },
+    {
+      "id": "clear_test_run",
+      "category": "clear_task",
+      "prompt": "请运行这个项目现有的后端单元测试，并报告失败的测试名称。",
+      "ask_user": false,
+      "discovery_evidence_injected": false,
+      "initial_phase": "executing",
+      "phase": "executing",
+      "observed_ask": false,
+      "correct": true,
+      "reason": "The task is a concrete, low-risk execution request: run the project's existing backend unit tests and report failing test names. Everything needed to execute it (language, build tool, test command, test directories) is standard repository-discoverable information from the workspace at C:\\Users\\86189\\Documents\\TraceForge (e.g., gradle/maven/npm/go module files). No scope, architecture, security, or acceptance decision hinges on further user input, so clarification would only add friction.",
+      "gaps": [],
+      "questions": [],
+      "elapsed_seconds": 1.56
+    },
+    {
+      "id": "repo_test_framework",
+      "category": "repo_discoverable",
+      "prompt": "请查看项目配置，告诉我后端当前使用什么测试框架。",
+      "ask_user": false,
+      "discovery_evidence_injected": false,
+      "initial_phase": "executing",
+      "phase": "executing",
+      "observed_ask": false,
+      "correct": true,
+      "reason": "The user is asking a repository-discoverable question about the backend's test framework. This is a codebase inspection task, not a request with ambiguity that changes scope, architecture, security, or acceptance criteria.",
+      "gaps": [],
+      "questions": [],
+      "elapsed_seconds": 1.87
+    },
+    {
+      "id": "repo_existing_style",
+      "category": "repo_discoverable",
+      "prompt": "请按这个仓库已有的 Python 测试风格，为 TaskBriefHook 增加一个边界条件测试。",
+      "ask_user": false,
+      "discovery_evidence_injected": false,
+      "initial_phase": "executing",
+      "phase": "executing",
+      "observed_ask": false,
+      "correct": true,
+      "reason": "这是一个范围很小的增量任务：在已选定的 TraceForge 仓库中，按照现有 Python 测试风格为 TaskBriefHook 增加一个边界条件测试。可用边界（如空 TaskBrief、缺字段、needs_clarification 边界、missing_points 为空/超量、选项数量边界等）以及既有测试的命名、断言与 fixture 风格，均可直接从仓库代码与测试目录中读取，属于仓库可发现事实，不需要打断用户确认。任选一个有实际意义的边界即可满足请求，选择差异对架构、安全或验收标准影响极低。",
+      "gaps": [],
+      "questions": [],
+      "elapsed_seconds": 3.32
+    },
+    {
+      "id": "low_impact_wording",
+      "category": "low_impact",
+      "prompt": "请在 README 里加一小段快速开始说明，具体措辞由你决定。",
+      "ask_user": false,
+      "discovery_evidence_injected": false,
+      "initial_phase": "executing",
+      "phase": "executing",
+      "observed_ask": false,
+      "correct": true,
+      "reason": "The request is a small, self-contained documentation change: add a brief Quick Start section to the README with wording left to the agent's discretion. The user explicitly delegated phrasing decisions, so no scope, architecture, security, or acceptance-criteria ambiguity remains. Locating the README and inferring the project's setup steps (install/build/run commands) is discoverable from the repository itself, so nothing needs to be asked before executing.",
+      "gaps": [],
+      "questions": [],
+      "elapsed_seconds": 1.51
+    },
+    {
+      "id": "low_impact_visual",
+      "category": "low_impact",
+      "prompt": "请给提交按钮增加轻微的 hover 效果，颜色沿用现有主题。",
+      "ask_user": false,
+      "discovery_evidence_injected": false,
+      "initial_phase": "executing",
+      "phase": "executing",
+      "observed_ask": false,
+      "correct": true,
+      "reason": "This is a small, low-impact styling tweak on an existing UI element. The two ambiguities that exist — which element is \"the submit button\" and which theme color tokens to reuse — are repository-discoverable facts (component source, CSS/theme variables), not user-side decisions, and neither changes scope, architecture, security, or acceptance criteria. The agent should locate the submit button in the workspace, reuse the existing theme's accent/primary hover tokens, and apply a subtle transition (e.g., slight background/brightness shift plus a short transition duration). No blocking gap remains.",
+      "gaps": [],
+      "questions": [],
+      "elapsed_seconds": 2.56
+    },
+    {
+      "id": "specified_deployment",
+      "category": "clear_task",
+      "prompt": "请为这个项目添加面向 Linux 的 Docker Compose 部署说明，服务监听 8000 端口。",
+      "ask_user": false,
+      "discovery_evidence_injected": false,
+      "initial_phase": "clarifying",
+      "phase": "clarifying",
+      "observed_ask": true,
+      "correct": false,
+      "reason": "项目技术栈、是否已有 Dockerfile/compose 文件等仓库内事实可由编码代理自行查看仓库确认，不构成阻塞。唯一会实质影响改动范围与验收的缺口是：本次交付只要求写部署文档，还是同时要产出/修改可运行的 Docker 构建与编排文件。",
+      "gaps": [
+        {
+          "description": "「添加 Docker Compose 部署说明」可能仅指 Markdown 文档，也可能包含实际可运行的 Dockerfile / docker-compose.yml，两者改动范围与验收标准不同。",
+          "discoverable_from_repo": false,
+          "impact": "决定代理是否需要创建构建/编排文件以及是否需要保证容器可实际构建运行，直接影响改动文件集合与验收方式。"
+        }
+      ],
+      "questions": [
+        "这次交付是只输出 Markdown 部署文档，还是同时新增/更新 Dockerfile 与 docker-compose.yml（compose 中将服务端口映射到 8000）？"
+      ],
+      "elapsed_seconds": 6.73
+    },
+    {
+      "id": "missing_deployment_target",
+      "category": "user_blocker",
+      "prompt": "请为生产环境编写部署配置，必须适配我们指定的平台；我还没有告诉你这个平台是什么。请不要自行选择平台。",
+      "ask_user": true,
+      "required_fact": "目标部署平台",
+      "discovery_evidence_injected": false,
+      "initial_phase": "clarifying",
+      "phase": "clarifying",
+      "observed_ask": true,
+      "correct": true,
+      "reason": "The platform is the single non-negotiable input for a production deployment config, and the user explicitly says it has not been provided and must not be assumed. Without it, the output artifact format (Kubernetes/Helm vs Compose vs Terraform vs PaaS manifest), secrets mechanism, and networking/TLS model all change, so any config written now would be guesswork. Repository evidence is empty, so no existing deployment artifacts were found to infer the platform from; that fact remains repo-discoverable if the workspace later contains such files.",
+      "gaps": [
+        {
+          "description": "The deployment target platform is unspecified and explicitly must not be chosen by the agent; it determines the config format, secret mechanism, and networking model.",
+          "discoverable_from_repo": false,
+          "impact": "Blocking: the entire artifact type, syntax, secret handling, and ingress/TLS approach depend on this choice."
+        },
+        {
+          "description": "How far the production config must reach beyond the app's deployment manifest (secrets, ingress/TLS, CI/CD, observability) materially changes scope and acceptance.",
+          "discoverable_from_repo": false,
+          "impact": "Scope/acceptance: determines how many files and which concerns are in scope and when the task is considered complete."
+        }
+      ],
+      "questions": [
+        "Which platform must the production deployment config target?",
+        "What must the deliverable include beyond the core deployment definition?"
+      ],
+      "answer_recheck": {
+        "phase": "executing",
+        "resumed_without_reasking": true,
+        "reason": "The previously blocking gap (target platform and deliverable shape) has been fully answered: Kubernetes 1.30, a Deployment plus a Service, container port 8000, 1 replica, no Ingress/TLS, secrets sourced from a Kubernetes Secret, remaining details per existing repository conventions. Remaining unknowns (image name/registry, resource requests/limits, labels/annotations, probe paths, Secret name/keys) are standard repository-discoverable facts and do not materially change scope, architecture, security posture, or acceptance criteria. No further blocking clarification is warranted."
+      },
+      "elapsed_seconds": 7.93
+    },
+    {
+      "id": "missing_database_product",
+      "category": "user_blocker",
+      "prompt": "请把项目迁移到公司指定的数据库产品，但目标数据库产品尚未提供。不要自行选择数据库。",
+      "ask_user": true,
+      "required_fact": "目标数据库产品",
+      "discovery_evidence_injected": false,
+      "initial_phase": "clarifying",
+      "phase": "clarifying",
+      "observed_ask": true,
+      "correct": true,
+      "reason": "The migration target is the core of the task, and it is explicitly not yet known. The user also forbade self-selecting a database, so execution cannot proceed without either the product name or an explicit decision on interim work. This is a blocking scope gap, not low-impact ambiguity.",
+      "gaps": [
+        {
+          "description": "The company-designated target database product is unknown, and choosing one is forbidden. Nothing can be migrated to an unspecified target.",
+          "discoverable_from_repo": false,
+          "impact": "Blocking: determines schema, driver/ORM, query dialect, migration tooling, and acceptance criteria for the entire task."
+        },
+        {
+          "description": "If the target product is not yet available, it is unclear whether any preparatory work is in scope now or whether the task should be fully deferred.",
+          "discoverable_from_repo": false,
+          "impact": "Sets whether the task is 'no-op / wait' versus a refactor-only scope, which materially changes deliverables."
+        }
+      ],
+      "questions": [
+        "Which database product is the required migration target, and when will it be available?",
+        "Until the target product is decided, should I do preparatory work (inventory database-specific code, introduce a persistence abstraction layer) or hold off on all changes?"
+      ],
+      "elapsed_seconds": 4.64
+    },
+    {
+      "id": "missing_feature_to_remove",
+      "category": "user_blocker",
+      "prompt": "请删除这个项目里我不需要的那个功能，我还没说具体是哪一个功能。",
+      "ask_user": true,
+      "required_fact": "要删除的功能",
+      "discovery_evidence_injected": false,
+      "initial_phase": "clarifying",
+      "phase": "clarifying",
+      "observed_ask": true,
+      "correct": true,
+      "reason": "The user explicitly states they have not yet identified which feature should be removed. Without knowing the target feature, no removal work can be scoped, and the repository cannot tell us which feature the user personally considers unnecessary.",
+      "gaps": [
+        {
+          "description": "The request is to delete one unspecified feature from the TraceForge project; the feature identity is unknown and cannot be inferred from the repository.",
+          "discoverable_from_repo": false,
+          "impact": "Blocks all work: determines which files, APIs, UI, tests, and docs are removed or left untouched."
+        }
+      ],
+      "questions": [
+        "Which specific feature should be deleted? (Name it, or describe its entry point/UI/command so it can be located.)"
+      ],
+      "answer_recheck": {
+        "phase": "executing",
+        "resumed_without_reasking": true,
+        "reason": "The user's original request was incomplete ('I haven't said which feature yet'), but the provided clarification fully resolves it: delete the session archive feature entirely, including frontend/backend entry points, routes, and related tests, while keeping session deletion and branch switching. Scope, entry points, and exclusions are now specified, so execution can proceed. Remaining details (exact file locations, symbol names, whether archived DB rows/migrations are dropped or retained for data safety) are discoverable from the repository and do not materially change the agreed scope."
+      },
+      "elapsed_seconds": 5.83
+    },
+    {
+      "id": "missing_access_rules",
+      "category": "user_blocker",
+      "prompt": "请按公司的权限矩阵修改访问控制，但权限矩阵不在仓库里，也没有提供给你。",
+      "ask_user": true,
+      "required_fact": "权限矩阵或各角色权限",
+      "discovery_evidence_injected": false,
+      "initial_phase": "clarifying",
+      "phase": "clarifying",
+      "observed_ask": true,
+      "correct": true,
+      "reason": "The task is to change access control to match the company permission matrix, but the matrix content is neither in the repository nor supplied. The required role/resource/action mappings and the intended enforcement points cannot be derived from the codebase, so any implementation would be speculative and could weaken security.",
+      "gaps": [
+        {
+          "description": "The authoritative role→resource→action permission matrix (or equivalent rules) that defines the target access-control state is unavailable, and the repository does not contain it.",
+          "discoverable_from_repo": false,
+          "impact": "Blocking: without the target rules, no correct access-control change can be defined or verified; guessing risks privilege escalation or lockout."
+        }
+      ],
+      "questions": [
+        "Please provide the permission matrix — either paste it inline, add the file to the repository (and give its path), or share a link/export — including roles, resources, actions (allow/deny), and any inheritance or deny-override rules."
+      ],
+      "elapsed_seconds": 4.29
+    },
+    {
+      "id": "missing_legacy_protocol",
+      "category": "user_blocker",
+      "prompt": "请修改新接口，使它与我们的线上旧客户端协议兼容；旧客户端协议既没有文档，也不在此仓库中。",
+      "ask_user": true,
+      "required_fact": "旧客户端协议或兼容要求",
+      "discovery_evidence_injected": false,
+      "initial_phase": "clarifying",
+      "phase": "clarifying",
+      "observed_ask": true,
+      "correct": true,
+      "reason": "The task's core requirement — being compatible with the legacy online client protocol — cannot be satisfied or verified from anything available: you stated the protocol has no documentation and is not in this repository. Without concrete protocol artifacts or a way to observe the legacy behavior, scope and acceptance criteria are undefined, so this is a blocking gap rather than low-impact ambiguity.",
+      "gaps": [
+        {
+          "description": "No specification or observable reference for the legacy wire protocol exists in the workspace; the agent cannot infer field names, types, framing, encoding, or version negotiation.",
+          "discoverable_from_repo": false,
+          "impact": "Determines whether compatibility can be implemented and verified at all, or whether the work must be replaced by a guess-and-iterate reverse-engineering effort."
+        },
+        {
+          "description": "Even with artifacts, 'compatible' is unbounded: it may cover transport and framing, request/response schemas, error codes, encoding/charset, pagination or state semantics, and version negotiation.",
+          "discoverable_from_repo": false,
+          "impact": "Sets the architecture (in-place protocol change vs. translation layer vs. new endpoint) and defines the acceptance tests for backward compatibility."
+        }
+      ],
+      "questions": [
+        "What artifact can we use to derive the old client protocol — a written spec, sample request/response captures, a reference/test server we may probe, or access to the legacy client itself?",
+        "Which aspects must be byte-for-byte compatible with the old client — the full transport, framing, and payload contract, or only the request/response payload fields while transport details may differ? And must existing legacy clients keep working unchanged, or is a compatibility shim/dual-protocol endpoint acceptable?"
+      ],
+      "elapsed_seconds": 4.16
+    },
+    {
+      "id": "missing_design_reference",
+      "category": "user_blocker",
+      "prompt": "请把首页改成与我的设计稿完全一致的样子，但我还没有提供设计稿或链接。",
+      "ask_user": true,
+      "required_fact": "设计稿或链接",
+      "discovery_evidence_injected": false,
+      "initial_phase": "clarifying",
+      "phase": "clarifying",
+      "observed_ask": true,
+      "correct": true,
+      "reason": "The core acceptance criterion — matching a specific design — cannot be evaluated because no design artifact or link was provided. Scope also depends on whether fidelity must hold across breakpoints/themes. Everything else (which file is the homepage, current stack) is discoverable from the repo and does not block.",
+      "gaps": [
+        {
+          "description": "No design mockup, image, or link was supplied, so 'exactly matching the design' has no reference to implement or verify against.",
+          "discoverable_from_repo": false,
+          "impact": "Blocking: without the design artifact the task has no verifiable definition of done."
+        },
+        {
+          "description": "Pixel-exact matching is only meaningful for a defined set of viewports and themes; the design may only cover one.",
+          "discoverable_from_repo": false,
+          "impact": "Materially changes effort and acceptance criteria; affects whether responsive/dark-mode styles are in scope."
+        }
+      ],
+      "questions": [
+        "How can I access the design you want the homepage to match (Figma/other link, exported image files, or a live reference page)?",
+        "Should pixel-exact fidelity apply only to the desktop light-theme view in the design, or also to mobile/tablet breakpoints and dark mode?"
+      ],
+      "elapsed_seconds": 3.49
+    },
+    {
+      "id": "missing_mobile_platform",
+      "category": "user_blocker",
+      "prompt": "请加入我们指定的移动端平台支持，我还没有告诉你目标是 Android、iOS 还是两者。",
+      "ask_user": true,
+      "required_fact": "目标移动端平台",
+      "discovery_evidence_injected": false,
+      "initial_phase": "clarifying",
+      "phase": "clarifying",
+      "observed_ask": true,
+      "correct": true,
+      "reason": "目标移动端平台直接决定技术栈、构建流程、权限模型与验收标准，且用户已明确表示尚未告知目标平台，无法从仓库推断，属于必须先澄清的范围级缺口。",
+      "gaps": [
+        {
+          "description": "用户请求加入移动端平台支持，但未说明目标是 Android、iOS 还是两者，这会影响架构选型、构建与发布流程、平台权限以及验收方式。",
+          "discoverable_from_repo": false,
+          "impact": "决定技术栈与架构（如跨平台方案 vs 原生）、构建/签名/发布链路、平台特有能力与权限处理，以及测试与验收矩阵的范围。"
+        }
+      ],
+      "questions": [
+        "本次需要支持的移动端目标是哪一个：仅 Android、仅 iOS，还是两者都要？"
+      ],
+      "elapsed_seconds": 2.02
+    },
+    {
+      "id": "missing_license_choice",
+      "category": "user_blocker",
+      "prompt": "请把项目许可证改成公司法务批准的版本，但我还没有告诉你批准的是哪种许可证。",
+      "ask_user": true,
+      "required_fact": "批准的许可证",
+      "discovery_evidence_injected": false,
+      "initial_phase": "clarifying",
+      "phase": "clarifying",
+      "observed_ask": true,
+      "correct": true,
+      "reason": "The core instruction is to apply a license chosen by the company's legal team, but the specific approved license was explicitly not provided. License choice has legal and distribution consequences, so the correct SPDX identifier/text cannot be guessed from the repository; executing with a wrong license would be harmful. This is a blocking gap.",
+      "gaps": [
+        {
+          "description": "The exact license approved by company legal is unknown, so no license text or SPDX identifier can be applied.",
+          "discoverable_from_repo": false,
+          "impact": "Determines the LICENSE file content, SPDX identifier in package manifests, and whether the project may be published/distributed. Wrong choice creates legal risk."
+        }
+      ],
+      "questions": [
+        "Which license did legal approve (e.g., SPDX identifier such as MIT, Apache-2.0, BSD-3-Clause, or internal/proprietary), and should I use the canonical text or an internal legal-supplied file?"
+      ],
+      "answer_recheck": {
+        "phase": "executing",
+        "resumed_without_reasking": true,
+        "reason": "The user's clarification resolves the only blocking gap: legal approved the MIT License, with copyright holder 'TraceForge Contributors' and year 2026. MIT is a standard SPDX license with canonical text, so no separate legal-supplied file is required. Remaining details — which files carry license metadata (e.g., LICENSE, README, package.json/pyproject.toml/Cargo.toml 'license' fields) and whether a different license is currently present — are discoverable directly from the repository in C:\\Users\\86189\\Documents\\TraceForge and do not change scope, architecture, or security."
+      },
+      "elapsed_seconds": 5.78
+    },
+    {
+      "id": "missing_alert_threshold",
+      "category": "user_blocker",
+      "prompt": "请按业务要求设置线上告警阈值；具体阈值既不在仓库里，也没有提供给你。",
+      "ask_user": true,
+      "required_fact": "告警指标及阈值",
+      "discovery_evidence_injected": true,
+      "initial_phase": "discovering",
+      "phase": "clarifying",
+      "observed_ask": true,
+      "correct": true,
+      "reason": "仓库检索确认不存在任何业务告警阈值或监控配置，因此阈值数值、指标范围与生效环境等关键输入无法从仓库推断；缺少这些信息会直接决定改动内容与线上风险，属于阻塞性缺口。请仅针对仍未解决的核心点给出信息。",
+      "gaps": [
+        {
+          "description": "需要具体告警指标与阈值数值/触发条件（比较符、统计窗口、持续时间）。仓库中无任何告警阈值或规则文件可参考。",
+          "discoverable_from_repo": false,
+          "impact": "没有数值与指标就无法落地配置，是任务的核心阻塞点。"
+        },
+        {
+          "description": "需要明确生效环境（prod 全量/灰度）以及告警严重级别、通知渠道与升级策略。",
+          "discoverable_from_repo": false,
+          "impact": "决定通知投递路径、值班影响面与线上风险控制。"
+        },
+        {
+          "description": "仓库中不存在告警规则或监控配置，需确认阈值以何种形式落地（新增配置文件路径/配置中心/环境变量）以及所属系统。",
+          "discoverable_from_repo": false,
+          "impact": "决定改动位置与部署方式，避免引入不符合团队约定的配置入口。"
+        }
+      ],
+      "questions": [
+        "请给出需要设置阈值的指标及具体数值与触发条件（例如：payment-api 5xx 错误率 > 1% 持续 2 分钟；或指定一个业务 KPI 与其阈值）。",
+        "这些阈值在哪个环境生效，严重级别与通知/升级方式是什么（例如 prod 全量，P1 即时通知并 5 分钟升级）？",
+        "阈值应写入哪里？请指定目标位置与格式（例如新增 config/alerts.yaml、或写入外部配置中心/环境变量）。"
+      ],
+      "elapsed_seconds": 10.27
+    },
+    {
+      "id": "missing_internal_standard",
+      "category": "user_blocker",
+      "prompt": "请实现符合我们内部验收标准的登录功能，标准目前没有给你，也不在仓库中。",
+      "ask_user": true,
+      "required_fact": "内部登录验收标准",
+      "discovery_evidence_injected": false,
+      "initial_phase": "clarifying",
+      "phase": "clarifying",
+      "observed_ask": true,
+      "correct": true,
+      "reason": "验收标准明确声明未提供且不在仓库中，无法判定“完成”的定义；这直接影响范围与验收，属于阻塞性缺口。同时登录的技术形态（会话/JWT、用户来源、是否需要注册/第三方登录）会决定架构与安全实现，仓库证据为空，需用户提供。",
+      "gaps": [
+        {
+          "description": "驱动整个实现与验收的内部标准未提供，且仓库中不存在，无法确定“符合标准”意味着什么。",
+          "discoverable_from_repo": false,
+          "impact": "决定功能范围与是否可判定完成，是本任务唯一的验收依据，缺失则无法确认交付物正确性。"
+        },
+        {
+          "description": "登录的技术实现形态未定，直接影响架构与安全设计。",
+          "discoverable_from_repo": false,
+          "impact": "决定鉴权架构、令牌存取与安全边界；仓库为空无法推断。"
+        },
+        {
+          "description": "用户凭据的来源与注册流程未说明。",
+          "discoverable_from_repo": false,
+          "impact": "影响数据模型、迁移脚本与接口范围（是否含注册/找回密码）。"
+        }
+      ],
+      "questions": [
+        "能否提供内部验收标准的具体条目（如必须支持的登录方式、错误提示、锁定策略、性能/并发要求等）？",
+        "登录会话应采用哪种机制：服务端 Session+Cookie、JWT、还是交由外部身份提供方（OAuth2/OIDC/SSO）？",
+        "账号与密码存放于何处（现有用户库/新建用户表/仅预置测试账号），是否需要同时实现注册与找回密码？"
+      ],
+      "elapsed_seconds": 3.23
+    }
+  ]
+}

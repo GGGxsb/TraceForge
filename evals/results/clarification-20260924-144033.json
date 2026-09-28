@@ -1,0 +1,406 @@
+{
+  "created_at": "2026-09-24T14:40:33.372046+00:00",
+  "scope": "TaskBrief gate and generated clarification questions; no full agent tool execution",
+  "evidence_note": "repo_evidence is controlled, simulated read-only tool output; it is not an actual agent tool trace",
+  "case_file": "evals\\clarification_holdout.json",
+  "case_sha256": "ebba3ea3b93470ca3e49e234990cfc27a1e602e71fbcd25306cc9ef7a29728cb",
+  "model": "deepseek-flash",
+  "base_host": "api.deepseek.com",
+  "summary": {
+    "cases": 16,
+    "completed": 16,
+    "errors": 0,
+    "correct": 16,
+    "tp": 8,
+    "fp": 0,
+    "fn": 0,
+    "tn": 8,
+    "ask_decision_precision": 1.0,
+    "ask_decision_recall": 1.0,
+    "ask_decision_f1": 1.0,
+    "unnecessary_ask_rate": 0.0,
+    "answer_rechecks": 3,
+    "answer_recheck_correct": 2,
+    "resumed_without_reasking": 1,
+    "questions": 8,
+    "chinese_prompts_with_english_only_questions": 0
+  },
+  "results": [
+    {
+      "id": "holdout_thanks",
+      "category": "conversation",
+      "prompt": "谢谢，先这样。",
+      "ask_user": false,
+      "discovery_evidence_injected": false,
+      "initial_phase": "executing",
+      "phase": "executing",
+      "observed_ask": false,
+      "correct": true,
+      "reason": "用户仅表达感谢并结束当前对话（“谢谢，先这样。”），未提出任何新的编码、文档或配置需求，属于闲聊/收尾性回复，不构成待执行的任务，也无需澄清。",
+      "gaps": [],
+      "questions": [],
+      "elapsed_seconds": 1.94
+    },
+    {
+      "id": "holdout_capability_scope",
+      "category": "conversation",
+      "prompt": "TraceForge 能读取本地仓库中的哪些文件？",
+      "ask_user": false,
+      "discovery_evidence_injected": false,
+      "initial_phase": "executing",
+      "phase": "executing",
+      "observed_ask": false,
+      "correct": true,
+      "reason": "这是关于 TraceForge 现有能力的询问，可通过查阅仓库代码和配置直接回答，不属于需要用户澄清的阻塞性缺口。",
+      "gaps": [],
+      "questions": [],
+      "elapsed_seconds": 2.63
+    },
+    {
+      "id": "holdout_exact_ui_label",
+      "category": "clear_task",
+      "prompt": "把左侧栏里的「工作区」三个字改成「项目」。",
+      "ask_user": false,
+      "discovery_evidence_injected": false,
+      "initial_phase": "executing",
+      "phase": "executing",
+      "observed_ask": false,
+      "correct": true,
+      "reason": "请求目标明确：把左侧栏文案「工作区」替换为「项目」。该修改属于低风险文案调整，具体文案位置可通过在 TraceForge 仓库中搜索「工作区」定位，不影响范围、架构、安全或验收标准，因此无需阻塞式澄清。",
+      "gaps": [
+        {
+          "description": "需要定位左侧栏中显示「工作区」的文案来源，可能是组件模板、常量或国际化资源文件。",
+          "discoverable_from_repo": true,
+          "impact": "低：仅影响文案替换的具体改法，不影响功能与验收。"
+        }
+      ],
+      "questions": [],
+      "elapsed_seconds": 4.59
+    },
+    {
+      "id": "holdout_health_test",
+      "category": "repo_discoverable",
+      "prompt": "给现有的 /api/health 路由补一条测试，沿用仓库已有的测试风格。",
+      "ask_user": false,
+      "discovery_evidence_injected": false,
+      "initial_phase": "executing",
+      "phase": "executing",
+      "observed_ask": false,
+      "correct": true,
+      "reason": "请求明确且范围很小：为现有的 /api/health 路由补一条测试，并沿用仓库已有测试风格。测试文件位置、断言方式与用例写法均可由仓库现有测试代码推断（例如测试目录结构、所用测试框架与命名约定），属于低影响实现细节，不需要向用户确认。",
+      "gaps": [
+        {
+          "description": "仓库现有测试的框架、目录位置与命名约定需要从代码库中读取，而非询问用户。",
+          "discoverable_from_repo": true,
+          "impact": "决定新测试文件的路径、导入方式与断言风格；不影响功能范围。"
+        },
+        {
+          "description": "/api/health 路由的注册位置与返回体结构需从仓库中读取，用于确定断言内容。",
+          "discoverable_from_repo": true,
+          "impact": "决定测试中的请求路径与断言目标；不影响功能范围。"
+        }
+      ],
+      "questions": [],
+      "elapsed_seconds": 2.2
+    },
+    {
+      "id": "holdout_dependency_location",
+      "category": "repo_discoverable",
+      "prompt": "查一下后端依赖是在哪个文件声明的，告诉我文件名就行。",
+      "ask_user": false,
+      "discovery_evidence_injected": false,
+      "initial_phase": "executing",
+      "phase": "executing",
+      "observed_ask": false,
+      "correct": true,
+      "reason": "该问题属于仓库内可直接发现的事实，无需用户补充信息；应直接检查 TraceForge 工作区中的后端依赖声明文件（如 requirements.txt、pyproject.toml、package.json 等）并返回文件名。",
+      "gaps": [],
+      "questions": [],
+      "elapsed_seconds": 2.63
+    },
+    {
+      "id": "holdout_readme_polish",
+      "category": "low_impact",
+      "prompt": "把 README 里的启动步骤写得更清楚一些，具体措辞由你决定。",
+      "ask_user": false,
+      "discovery_evidence_injected": false,
+      "initial_phase": "executing",
+      "phase": "executing",
+      "observed_ask": false,
+      "correct": true,
+      "reason": "这是一个纯文档措辞改进任务，用户已明确授权由执行方决定具体措辞。README 启动步骤所涉及的实际命令、依赖与前置条件均可直接从仓库（README.md、package.json、脚本或构建配置）中读取，属于可自行查证的实现细节，不构成影响范围、架构、安全或验收标准的阻塞性缺口。",
+      "gaps": [
+        {
+          "description": "README 中应写明的真实启动命令与前置条件（安装依赖、环境变量、开发/构建启动方式等）需要以仓库现有文件为准，而不是凭推测编写。",
+          "discoverable_from_repo": true,
+          "impact": "影响文档内容的准确性，但不阻塞执行；执行方应先读取仓库内相关文件再改写步骤说明。"
+        }
+      ],
+      "questions": [],
+      "elapsed_seconds": 2.42
+    },
+    {
+      "id": "holdout_frontend_tests",
+      "category": "clear_task",
+      "prompt": "运行项目现有的前端测试，只列出失败的用例。",
+      "ask_user": false,
+      "discovery_evidence_injected": false,
+      "initial_phase": "executing",
+      "phase": "executing",
+      "observed_ask": false,
+      "correct": true,
+      "reason": "请求明确且无阻塞性歧义：运行项目现有的前端测试并仅列出失败用例。具体测试框架与执行命令可由仓库内文件（如 package.json 的 scripts、测试配置、锁文件等）自行发现，属于仓库可查事实，不应因此中断执行；本地无法运行或缺少依赖时按常规方式如实说明即可。",
+      "gaps": [],
+      "questions": [],
+      "elapsed_seconds": 2.41
+    },
+    {
+      "id": "holdout_error_color",
+      "category": "low_impact",
+      "prompt": "错误提示的颜色太刺眼了，请沿用当前主题稍微弱化一点。",
+      "ask_user": false,
+      "discovery_evidence_injected": false,
+      "initial_phase": "executing",
+      "phase": "executing",
+      "observed_ask": false,
+      "correct": true,
+      "reason": "这是一个低影响的样式调整请求，不涉及范围、架构、安全或验收标准的实质性变化；可以在仓库中定位当前主题下错误提示使用的颜色变量或样式定义，并选取更柔和但仍符合当前主题的色值实现。",
+      "gaps": [],
+      "questions": [],
+      "elapsed_seconds": 1.96
+    },
+    {
+      "id": "holdout_release_target",
+      "category": "user_blocker",
+      "prompt": "给这个项目准备发布配置，平台按我们上次定的来。",
+      "ask_user": true,
+      "required_fact": "此前商定的发布平台",
+      "discovery_evidence_injected": false,
+      "initial_phase": "clarifying",
+      "phase": "clarifying",
+      "observed_ask": true,
+      "correct": true,
+      "reason": "用户要求“平台按我们上次定的来”，但本轮未提供任何上次的决策记录（Previous decision: none），仓库证据为空，无法确认上次约定的是哪个发布平台；而发布平台直接决定本次要新增哪些配置文件（CI 工作流、打包元数据、镜像构建、私有仓库凭据等）以及验收标准，属于上游阻塞信息，必须先确认。",
+      "gaps": [
+        {
+          "description": "本次“发布配置”要面向的发布平台/分发渠道未确定。用户引用的是上一轮对话中的口头约定，该信息既不在本次请求中，也无法从仓库中恢复（本轮仓库证据为空）。不同平台对应的配置文件完全不同，例如 GitHub Releases + Actions、公共包仓库（crates.io / PyPI / npm 等）、容器镜像仓库（GHCR / Docker Hub）、或内部私有部署流水线。",
+          "discoverable_from_repo": false,
+          "impact": "决定需要创建或修改的文件集合（如 .github/workflows/*.yml、Cargo.toml/Package.swift/package.json 的发布字段、Dockerfile 与镜像推送配置、私有仓库凭据与密钥引用方式）、版本号与 tag 策略、产物格式、以及验收标准（是否能产出可下载/可安装的发布物）。选错平台会导致整套配置返工。"
+        }
+      ],
+      "questions": [
+        "这次发布配置要对接哪个平台？（如果上一轮选的是多个，请一并列出）"
+      ],
+      "answer_recheck": {
+        "phase": "clarifying",
+        "expected_phase": "executing",
+        "correct": false,
+        "resumed_without_reasking": false,
+        "reason": "平台（AWS ECS Fargate）、容器端口（8000）和交付范围（仅任务定义 + 服务配置）已在澄清中明确，不再重复询问。但任务定义必须写入容器镜像引用，而镜像来源（本仓库 Dockerfile 构建推送的 ECR 镜像，还是已有镜像）以及对应的 AWS region / 账号尚未确定，这属于生成可用配置的前置事实，不是实现细节。仓库侧只能确认是否存在 Dockerfile，无法推断 ECR 地址与区域。"
+      },
+      "elapsed_seconds": 13.28
+    },
+    {
+      "id": "holdout_rate_limit_quota",
+      "category": "user_blocker",
+      "prompt": "给登录接口加限流，按产品团队批的配额配置。",
+      "ask_user": true,
+      "required_fact": "产品批准的具体限流配额",
+      "discovery_evidence_injected": false,
+      "initial_phase": "clarifying",
+      "phase": "clarifying",
+      "observed_ask": true,
+      "correct": true,
+      "reason": "请求要求“按产品团队批的配额配置”加限流，但工作区中未提供任何配额数值或配置文件，仓库证据为空；限流阈值、时间窗口和维度直接决定实现与验收标准，属于必须先明确的阻塞信息。",
+      "gaps": [
+        {
+          "description": "产品团队批准的配额配置（阈值、时间窗口、按 IP 还是按账号维度）没有给出，也没有指向仓库内的配置文件或需求单。",
+          "discoverable_from_repo": false,
+          "impact": "决定限流阈值、窗口与计数维度，直接决定实现方式和验收标准。"
+        },
+        {
+          "description": "限流的判定维度（IP、账号、IP+账号组合）以及超限后的响应方式（状态码、Retry-After、是否锁定账号）未明确。",
+          "discoverable_from_repo": false,
+          "impact": "影响接口行为契约、错误码和前端/调用方处理逻辑。"
+        },
+        {
+          "description": "登录接口的具体路径、所在服务以及现有中间件/依赖（如 Redis、网关限流组件）需要从仓库确认。",
+          "discoverable_from_repo": true,
+          "impact": "决定实现落点与是否需要引入新依赖。"
+        }
+      ],
+      "questions": [
+        "产品团队批准的登录接口配额在哪里、具体是多少？"
+      ],
+      "answer_recheck": {
+        "phase": "executing",
+        "expected_phase": "executing",
+        "correct": true,
+        "resumed_without_reasking": true,
+        "reason": "配额这一唯一由用户掌握的关键信息已经澄清：按 IP 每分钟 10 次登录尝试，超限返回 HTTP 429，且不做用户维度限流。剩余问题（登录接口在代码中的具体位置、限流窗口算法、计数器存储位置、客户端 IP 的提取方式）都属于可由仓库勘察后自行取舍的实现细节，不改变范围、架构或验收标准，因此不阻塞执行。"
+      },
+      "elapsed_seconds": 11.68
+    },
+    {
+      "id": "holdout_design_reference",
+      "category": "user_blocker",
+      "prompt": "把首页还原成我那张设计稿。",
+      "ask_user": true,
+      "required_fact": "设计稿本身或可访问链接",
+      "discovery_evidence_injected": false,
+      "initial_phase": "clarifying",
+      "phase": "clarifying",
+      "observed_ask": true,
+      "correct": true,
+      "reason": "用户要求把首页还原为“那张设计稿”，但没有指明设计稿的文件、图片、链接或仓库内路径，属于阻塞性的验收基准缺失，无法确定还原目标。",
+      "gaps": [
+        {
+          "description": "用户要求将首页还原为“那张设计稿”，但未提供设计稿文件、图片、链接或仓库内路径，无法确定目标视觉与验收基准。",
+          "discoverable_from_repo": false,
+          "impact": "缺少设计稿将无法确定首页还原的目标布局、样式与交互，也无法判断还原是否完成。"
+        }
+      ],
+      "questions": [
+        "请提供“那张设计稿”的具体来源或路径（例如图片、设计文件链接，或 TraceForge 仓库内的设计稿路径）。"
+      ],
+      "elapsed_seconds": 5.2
+    },
+    {
+      "id": "holdout_unknown_module",
+      "category": "user_blocker",
+      "prompt": "把我不再使用的那个模块彻底删掉。",
+      "ask_user": true,
+      "required_fact": "要删除的具体模块",
+      "discovery_evidence_injected": false,
+      "initial_phase": "clarifying",
+      "phase": "clarifying",
+      "observed_ask": true,
+      "correct": true,
+      "reason": "请求中只说“不再使用的那个模块”，但没有给出具体是哪个模块。仓库证据为空，无法从工作区推断目标模块，因此无法确定删除范围、涉及的引用关系与验收标准。该信息只能由用户提供，需要先澄清。",
+      "gaps": [
+        {
+          "description": "需要明确要彻底删除的目标模块具体是哪一个，这是决定删除范围、依赖清理与验收标准的最上游事实。",
+          "discoverable_from_repo": false,
+          "impact": "不同模块的删除会牵涉不同的代码、配置、依赖与引用清理，范围和验收标准完全不同；未确定目标模块前无法执行删除。"
+        }
+      ],
+      "questions": [
+        "请指出要删除的模块名称或目录路径（例如 src/xxx 或某个包名）？"
+      ],
+      "elapsed_seconds": 2.24
+    },
+    {
+      "id": "holdout_conversion_formula",
+      "category": "user_blocker",
+      "prompt": "为报表加入我们业务定义的转化率，按既定口径计算。",
+      "ask_user": true,
+      "required_fact": "转化率计算口径",
+      "discovery_evidence_injected": false,
+      "initial_phase": "clarifying",
+      "phase": "clarifying",
+      "observed_ask": true,
+      "correct": true,
+      "reason": "请求要求按「我们业务定义的既定口径」计算转化率，但该口径的分子、分母以及聚合维度/时间窗口均未给出。这属于只有用户能提供的业务定义，不是仓库可推断的实现细节，且直接决定计算逻辑与验收标准，必须先确认。",
+      "gaps": [
+        {
+          "description": "转化率的业务口径未确定：分子（转化事件）与分母（基数事件）分别是什么、按哪个维度（用户/会话/订单）与哪个时间窗口（自然日/归因窗口）聚合，决定了报表的计算逻辑与数值正确性。",
+          "discoverable_from_repo": false,
+          "impact": "决定报表的指标计算逻辑、取数范围与验收口径；口径不确定会导致整个报表数值错误并需要返工。"
+        }
+      ],
+      "questions": [
+        "报表中「转化率」的分子和分母分别定义为什么，按哪个维度和时间窗口聚合？能否提供既定口径的文档/链接或直接写出计算公式？"
+      ],
+      "elapsed_seconds": 4.54
+    },
+    {
+      "id": "holdout_sso_requirements",
+      "category": "user_blocker",
+      "prompt": "登录改用公司的 SSO，并按公司现行接入要求实现。",
+      "ask_user": true,
+      "required_fact": "公司 SSO 接入规范或身份提供方资料",
+      "discovery_evidence_injected": false,
+      "initial_phase": "clarifying",
+      "phase": "clarifying",
+      "observed_ask": true,
+      "correct": true,
+      "reason": "要把 TraceForge 的登录切换为「公司 SSO」，必须先确定公司现行接入要求所指定的协议/身份提供方（IdP）以及对应的接入规范文档位置。该信息属于公司内部规范，无法从仓库代码中推断，且直接决定架构（引入哪些依赖、回调地址、会话/token 处理方式）、安全边界（密钥、证书、断言的校验方式）与验收标准（能登录哪些账号、失败场景如何处理），因此在本轮必须先澄清。",
+      "gaps": [
+        {
+          "description": "公司 SSO 的接入协议/身份提供方类型以及现行接入规范文档的位置与内容均未提供。仓库中现有登录实现（如账号密码、第三方登录）只能反映旧有实现，无法推出公司要求的协议、端点、客户端注册信息与配置项。",
+          "discoverable_from_repo": false,
+          "impact": "决定认证流程与架构改造范围（依赖库、回调路由、token/会话存储、登出与刷新机制）、安全实现细节（密钥与证书管理、断言签名校验、CSRF/state 防护）以及验收标准（可登录的账号体系、失败与降级行为）。在确认前无法判断现有登录代码是替换还是并存。"
+        }
+      ],
+      "questions": [
+        "公司 SSO 采用哪种接入协议（或 IdP 产品），对应的接入规范文档在哪里？请给出协议类型与文档链接/路径，或直接贴出关键接入要求（授权端点、回调地址要求、凭据申请方式等）。"
+      ],
+      "answer_recheck": {
+        "phase": "clarifying",
+        "expected_phase": "clarifying",
+        "correct": true,
+        "resumed_without_reasking": false,
+        "reason": "上一轮澄清的答复「就是公司平时用的那个 SSO」没有提供任何可据以实施的信息：既未说明协议/IdP，也未给出接入规范或凭据申请途径。当前仓库证据为空，工作区内不存在任何可推断公司 SSO 协议（OIDC/SAML/CAS）或授权端点、回调地址要求的线索，因此这一缺口只能由用户补齐，且它直接决定整体改造的架构、依赖与验收标准，属于唯一的先决阻塞点。"
+      },
+      "elapsed_seconds": 8.37
+    },
+    {
+      "id": "holdout_log_retention",
+      "category": "user_blocker",
+      "prompt": "清理用户事件日志，保留时长按合规团队的规定。",
+      "ask_user": true,
+      "required_fact": "合规团队规定的保留时长",
+      "discovery_evidence_injected": false,
+      "initial_phase": "clarifying",
+      "phase": "clarifying",
+      "observed_ask": true,
+      "correct": true,
+      "reason": "请求要求「保留时长按合规团队的规定」，但未给出规定的具体保留期限数值或文件来源，而该数值直接决定清理脚本的删除边界与验收标准，无法从仓库中推断，属于必须先由用户提供的上游阻塞信息。",
+      "gaps": [
+        {
+          "description": "合规团队规定的用户事件日志保留时长（具体期限或指定的合规文档），决定清理的删除边界（如删除早于 N 天/月的记录）。",
+          "discoverable_from_repo": false,
+          "impact": "决定清理任务的删除时间边界与验收判据；期限不同会导致删除范围、定时任务周期和测试用例完全不同。"
+        },
+        {
+          "description": "「用户事件日志」在仓库中对应的存储位置与表/文件（例如事件表、日志目录、S3 桶）。",
+          "discoverable_from_repo": true,
+          "impact": "影响清理脚本作用的目标对象；可在解决保留期限后自行从仓库中确认。"
+        }
+      ],
+      "questions": [
+        "合规团队要求的日志保留时长具体是多少（例如 30 天、90 天、180 天、1 年），或对应的合规文档在哪里？"
+      ],
+      "elapsed_seconds": 3.43
+    },
+    {
+      "id": "holdout_partner_signature",
+      "category": "user_blocker",
+      "prompt": "把订单状态同步到合作方 Webhook，按他们给我们的签名规范发送。",
+      "ask_user": true,
+      "required_fact": "合作方 Webhook 签名规范",
+      "discovery_evidence_injected": false,
+      "initial_phase": "clarifying",
+      "phase": "clarifying",
+      "observed_ask": true,
+      "correct": true,
+      "reason": "请求依赖“合作方给的签名规范”，但该规范的具体内容或存放位置未给出，且当前仓库证据为空，无法自行获得。签名算法、待签字段与密钥来源直接决定实现方式与验收标准，属于必须在动手前确认的上游事实；其余细节（触发哪些状态、重试策略等）可在此之后处理或在仓库中自行确定。",
+      "gaps": [
+        {
+          "description": "合作方签名规范的具体内容/位置未提供，无法确定签名算法（如 HMAC-SHA256）、待签名字段拼接顺序、时间戳与随机串规则、密钥来源，直接决定 Webhook 请求的构造与验收方式。",
+          "discoverable_from_repo": false,
+          "impact": "阻塞实现：无法确定签名如何生成、请求如何校验，无法定义验收标准。"
+        },
+        {
+          "description": "需要同步哪些订单状态、由什么事件触发推送（下单、支付、发货、完成、取消/退款等），以及是否全量对账兜底。",
+          "discoverable_from_repo": true,
+          "impact": "影响推送逻辑与幂等设计，但可在仓库中先查看现有订单状态机后再确定，非首要阻塞点。"
+        }
+      ],
+      "questions": [
+        "合作方的 Webhook 签名规范在哪里？请给出文档路径或直接粘贴规范内容。"
+      ],
+      "elapsed_seconds": 4.81
+    }
+  ]
+}

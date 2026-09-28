@@ -1,0 +1,556 @@
+{
+  "created_at": "2026-09-26T14:57:29.116007+00:00",
+  "model": "deepseek-flash",
+  "repeats": 1,
+  "passed": 3,
+  "total": 3,
+  "results": [
+    {
+      "task": "median_even",
+      "repeat": 1,
+      "passed": true,
+      "status": "completed",
+      "outcome": null,
+      "elapsed_seconds": 18.987,
+      "changed_files": [
+        "stats.py"
+      ],
+      "unrelated_files": [],
+      "hidden_exit_code": 0,
+      "hidden_output": "\n----------------------------------------------------------------------\nRan 3 tests in 0.000s\n\nOK\n",
+      "model_usage": {
+        "input_tokens": 16114,
+        "output_tokens": 1882,
+        "total_tokens": 17996,
+        "cached_input_tokens": 12672,
+        "reasoning_tokens": 467
+      },
+      "estimated_cost_usd": null,
+      "tool_calls": 9,
+      "tool_errors": 1,
+      "approval_decisions": [
+        {
+          "tool": "run_command",
+          "decision": "allow_once"
+        },
+        {
+          "tool": "run_command",
+          "decision": "allow_once"
+        }
+      ],
+      "recent_events": [
+        {
+          "type": "tool_call",
+          "tool": "run_command",
+          "status": null
+        },
+        {
+          "type": "approval_request",
+          "tool": "run_command",
+          "status": "pending"
+        },
+        {
+          "type": "run_state",
+          "tool": null,
+          "status": "waiting_approval"
+        },
+        {
+          "type": "approval_decision",
+          "tool": null,
+          "status": null
+        },
+        {
+          "type": "run_state",
+          "tool": null,
+          "status": "executing"
+        },
+        {
+          "type": "sandbox_start",
+          "tool": null,
+          "status": null
+        },
+        {
+          "type": "sandbox_end",
+          "tool": null,
+          "status": null
+        },
+        {
+          "type": "tool_result",
+          "tool": "run_command",
+          "status": null
+        },
+        {
+          "type": "run_state",
+          "tool": null,
+          "status": "executing"
+        },
+        {
+          "type": "model_usage",
+          "tool": null,
+          "status": null
+        },
+        {
+          "type": "model_reasoning",
+          "tool": null,
+          "status": null
+        },
+        {
+          "type": "tool_call",
+          "tool": "read_file",
+          "status": null
+        },
+        {
+          "type": "tool_call",
+          "tool": "git_diff",
+          "status": null
+        },
+        {
+          "type": "tool_result",
+          "tool": "read_file",
+          "status": null
+        },
+        {
+          "type": "tool_result",
+          "tool": "git_diff",
+          "status": null
+        },
+        {
+          "type": "run_state",
+          "tool": null,
+          "status": "executing"
+        },
+        {
+          "type": "model_usage",
+          "tool": null,
+          "status": null
+        },
+        {
+          "type": "assistant_message",
+          "tool": null,
+          "status": null
+        },
+        {
+          "type": "workspace_checkpoint",
+          "tool": null,
+          "status": null
+        },
+        {
+          "type": "run_state",
+          "tool": null,
+          "status": "completed"
+        }
+      ],
+      "reasoning_items": [
+        {
+          "seq": 15,
+          "keys": [
+            "content",
+            "encrypted_content",
+            "id",
+            "status",
+            "summary",
+            "type"
+          ],
+          "content_types": [
+            "reasoning_text"
+          ]
+        },
+        {
+          "seq": 22,
+          "keys": [
+            "content",
+            "encrypted_content",
+            "id",
+            "status",
+            "summary",
+            "type"
+          ],
+          "content_types": [
+            "reasoning_text"
+          ]
+        },
+        {
+          "seq": 39,
+          "keys": [
+            "content",
+            "encrypted_content",
+            "id",
+            "status",
+            "summary",
+            "type"
+          ],
+          "content_types": [
+            "reasoning_text"
+          ]
+        },
+        {
+          "seq": 50,
+          "keys": [
+            "content",
+            "encrypted_content",
+            "id",
+            "status",
+            "summary",
+            "type"
+          ],
+          "content_types": [
+            "reasoning_text"
+          ]
+        }
+      ],
+      "failure": null
+    },
+    {
+      "task": "clamp_feature",
+      "repeat": 1,
+      "passed": true,
+      "status": "completed",
+      "outcome": null,
+      "elapsed_seconds": 25.072,
+      "changed_files": [
+        "arithmetic.py",
+        "test_numbers.py"
+      ],
+      "unrelated_files": [],
+      "hidden_exit_code": 0,
+      "hidden_output": "\n----------------------------------------------------------------------\nRan 5 tests in 0.000s\n\nOK\n",
+      "model_usage": {
+        "input_tokens": 19655,
+        "output_tokens": 2201,
+        "total_tokens": 21856,
+        "cached_input_tokens": 15104,
+        "reasoning_tokens": 573
+      },
+      "estimated_cost_usd": null,
+      "tool_calls": 10,
+      "tool_errors": 1,
+      "approval_decisions": [
+        {
+          "tool": "run_command",
+          "decision": "allow_once"
+        },
+        {
+          "tool": "run_command",
+          "decision": "allow_once"
+        }
+      ],
+      "recent_events": [
+        {
+          "type": "sandbox_end",
+          "tool": null,
+          "status": null
+        },
+        {
+          "type": "tool_result",
+          "tool": "run_command",
+          "status": null
+        },
+        {
+          "type": "run_state",
+          "tool": null,
+          "status": "executing"
+        },
+        {
+          "type": "model_usage",
+          "tool": null,
+          "status": null
+        },
+        {
+          "type": "model_reasoning",
+          "tool": null,
+          "status": null
+        },
+        {
+          "type": "tool_call",
+          "tool": "run_command",
+          "status": null
+        },
+        {
+          "type": "tool_call",
+          "tool": "git_diff",
+          "status": null
+        },
+        {
+          "type": "approval_request",
+          "tool": "run_command",
+          "status": "pending"
+        },
+        {
+          "type": "run_state",
+          "tool": null,
+          "status": "waiting_approval"
+        },
+        {
+          "type": "approval_decision",
+          "tool": null,
+          "status": null
+        },
+        {
+          "type": "run_state",
+          "tool": null,
+          "status": "executing"
+        },
+        {
+          "type": "sandbox_start",
+          "tool": null,
+          "status": null
+        },
+        {
+          "type": "sandbox_end",
+          "tool": null,
+          "status": null
+        },
+        {
+          "type": "tool_result",
+          "tool": "run_command",
+          "status": null
+        },
+        {
+          "type": "tool_result",
+          "tool": "git_diff",
+          "status": null
+        },
+        {
+          "type": "run_state",
+          "tool": null,
+          "status": "executing"
+        },
+        {
+          "type": "model_usage",
+          "tool": null,
+          "status": null
+        },
+        {
+          "type": "assistant_message",
+          "tool": null,
+          "status": null
+        },
+        {
+          "type": "workspace_checkpoint",
+          "tool": null,
+          "status": null
+        },
+        {
+          "type": "run_state",
+          "tool": null,
+          "status": "completed"
+        }
+      ],
+      "reasoning_items": [
+        {
+          "seq": 8,
+          "keys": [
+            "content",
+            "encrypted_content",
+            "id",
+            "status",
+            "summary",
+            "type"
+          ],
+          "content_types": [
+            "reasoning_text"
+          ]
+        },
+        {
+          "seq": 21,
+          "keys": [
+            "content",
+            "encrypted_content",
+            "id",
+            "status",
+            "summary",
+            "type"
+          ],
+          "content_types": [
+            "reasoning_text"
+          ]
+        },
+        {
+          "seq": 28,
+          "keys": [
+            "content",
+            "encrypted_content",
+            "id",
+            "status",
+            "summary",
+            "type"
+          ],
+          "content_types": [
+            "reasoning_text"
+          ]
+        },
+        {
+          "seq": 51,
+          "keys": [
+            "content",
+            "encrypted_content",
+            "id",
+            "status",
+            "summary",
+            "type"
+          ],
+          "content_types": [
+            "reasoning_text"
+          ]
+        }
+      ],
+      "failure": null
+    },
+    {
+      "task": "read_only_timeout",
+      "repeat": 1,
+      "passed": true,
+      "status": "completed",
+      "outcome": null,
+      "elapsed_seconds": 5.413,
+      "changed_files": [],
+      "unrelated_files": [],
+      "hidden_exit_code": null,
+      "hidden_output": "",
+      "model_usage": {
+        "input_tokens": 5506,
+        "output_tokens": 750,
+        "total_tokens": 6256,
+        "cached_input_tokens": 3456,
+        "reasoning_tokens": 198
+      },
+      "estimated_cost_usd": null,
+      "tool_calls": 4,
+      "tool_errors": 0,
+      "approval_decisions": [],
+      "recent_events": [
+        {
+          "type": "run_state",
+          "tool": null,
+          "status": "executing"
+        },
+        {
+          "type": "model_usage",
+          "tool": null,
+          "status": null
+        },
+        {
+          "type": "assistant_message",
+          "tool": null,
+          "status": null
+        },
+        {
+          "type": "tool_call",
+          "tool": "list_files",
+          "status": null
+        },
+        {
+          "type": "tool_call",
+          "tool": "search_code",
+          "status": null
+        },
+        {
+          "type": "tool_result",
+          "tool": "list_files",
+          "status": null
+        },
+        {
+          "type": "tool_result",
+          "tool": "search_code",
+          "status": null
+        },
+        {
+          "type": "run_state",
+          "tool": null,
+          "status": "executing"
+        },
+        {
+          "type": "model_usage",
+          "tool": null,
+          "status": null
+        },
+        {
+          "type": "model_reasoning",
+          "tool": null,
+          "status": null
+        },
+        {
+          "type": "tool_call",
+          "tool": "read_file",
+          "status": null
+        },
+        {
+          "type": "tool_call",
+          "tool": "list_files",
+          "status": null
+        },
+        {
+          "type": "tool_result",
+          "tool": "read_file",
+          "status": null
+        },
+        {
+          "type": "tool_result",
+          "tool": "list_files",
+          "status": null
+        },
+        {
+          "type": "run_state",
+          "tool": null,
+          "status": "executing"
+        },
+        {
+          "type": "model_usage",
+          "tool": null,
+          "status": null
+        },
+        {
+          "type": "model_reasoning",
+          "tool": null,
+          "status": null
+        },
+        {
+          "type": "assistant_message",
+          "tool": null,
+          "status": null
+        },
+        {
+          "type": "workspace_checkpoint",
+          "tool": null,
+          "status": null
+        },
+        {
+          "type": "run_state",
+          "tool": null,
+          "status": "completed"
+        }
+      ],
+      "reasoning_items": [
+        {
+          "seq": 15,
+          "keys": [
+            "content",
+            "encrypted_content",
+            "id",
+            "status",
+            "summary",
+            "type"
+          ],
+          "content_types": [
+            "reasoning_text"
+          ]
+        },
+        {
+          "seq": 22,
+          "keys": [
+            "content",
+            "encrypted_content",
+            "id",
+            "status",
+            "summary",
+            "type"
+          ],
+          "content_types": [
+            "reasoning_text"
+          ]
+        }
+      ],
+      "failure": null
+    }
+  ]
+}

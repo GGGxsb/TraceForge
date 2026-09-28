@@ -1,0 +1,455 @@
+{
+  "created_at": "2026-09-24T11:30:50.556320+00:00",
+  "scope": "TaskBrief gate and generated clarification questions; no full agent tool execution",
+  "evidence_note": "repo_evidence is controlled, simulated read-only tool output; it is not an actual agent tool trace",
+  "case_file": "C:\\Users\\86189\\Documents\\TraceForge\\evals\\clarification_cases.json",
+  "case_sha256": "bb58a0d1c50bf27edf5c3682457b70f1ea511828a0565be9e92f7d1e79af96b4",
+  "model": "deepseek-flash",
+  "base_host": "api.deepseek.com",
+  "summary": {
+    "cases": 20,
+    "completed": 20,
+    "errors": 0,
+    "correct": 20,
+    "tp": 10,
+    "fp": 0,
+    "fn": 0,
+    "tn": 10,
+    "ask_decision_precision": 1.0,
+    "ask_decision_recall": 1.0,
+    "ask_decision_f1": 1.0,
+    "unnecessary_ask_rate": 0.0,
+    "answer_rechecks": 3,
+    "resumed_without_reasking": 3,
+    "questions": 10,
+    "chinese_prompts_with_english_only_questions": 0
+  },
+  "results": [
+    {
+      "id": "greeting_hello",
+      "category": "conversation",
+      "prompt": "你好",
+      "ask_user": false,
+      "discovery_evidence_injected": false,
+      "initial_phase": "executing",
+      "phase": "executing",
+      "observed_ask": false,
+      "correct": true,
+      "reason": "普通对话或能力询问，不需要需求澄清",
+      "gaps": [],
+      "questions": [],
+      "elapsed_seconds": 0.0
+    },
+    {
+      "id": "greeting_checkin",
+      "category": "conversation",
+      "prompt": "在吗？",
+      "ask_user": false,
+      "discovery_evidence_injected": false,
+      "initial_phase": "executing",
+      "phase": "executing",
+      "observed_ask": false,
+      "correct": true,
+      "reason": "普通对话或能力询问，不需要需求澄清",
+      "gaps": [],
+      "questions": [],
+      "elapsed_seconds": 0.0
+    },
+    {
+      "id": "capability_question",
+      "category": "conversation",
+      "prompt": "你能帮我查看这个项目的代码吗？",
+      "ask_user": false,
+      "discovery_evidence_injected": false,
+      "initial_phase": "executing",
+      "phase": "executing",
+      "observed_ask": false,
+      "correct": true,
+      "reason": "普通对话或能力询问，不需要需求澄清",
+      "gaps": [],
+      "questions": [],
+      "elapsed_seconds": 0.0
+    },
+    {
+      "id": "clear_readme_edit",
+      "category": "clear_task",
+      "prompt": "请把 README.md 第一行标题中的 TraceFroge 拼写改成 TraceForge。",
+      "ask_user": false,
+      "discovery_evidence_injected": false,
+      "initial_phase": "executing",
+      "phase": "executing",
+      "observed_ask": false,
+      "correct": true,
+      "reason": "请求明确且范围极小：将 README.md 第一行标题中的拼写错误 TraceFroge 更正为 TraceForge。目标文件、位置与期望结果均已指定，不存在影响范围、架构、安全或验收的缺失信息；实际文本内容可由仓库直接核对，无需用户澄清。",
+      "gaps": [],
+      "questions": [],
+      "elapsed_seconds": 2.12
+    },
+    {
+      "id": "clear_test_run",
+      "category": "clear_task",
+      "prompt": "请运行这个项目现有的后端单元测试，并报告失败的测试名称。",
+      "ask_user": false,
+      "discovery_evidence_injected": false,
+      "initial_phase": "executing",
+      "phase": "executing",
+      "observed_ask": false,
+      "correct": true,
+      "reason": "请求明确且无阻塞性歧义：运行项目现有后端单元测试并报告失败的测试名称。如何定位并运行测试（测试框架、命令、后端目录）属于仓库内可自行发现的事实，代理可直接检查仓库（如 README、package.json、pom.xml、pyproject.toml、requirements.txt、Makefile 等）并执行。若某测试套件无法运行，也应在报告中说明，而不是先向用户确认。",
+      "gaps": [],
+      "questions": [],
+      "elapsed_seconds": 1.24
+    },
+    {
+      "id": "repo_test_framework",
+      "category": "repo_discoverable",
+      "prompt": "请查看项目配置，告诉我后端当前使用什么测试框架。",
+      "ask_user": false,
+      "discovery_evidence_injected": false,
+      "initial_phase": "executing",
+      "phase": "executing",
+      "observed_ask": false,
+      "correct": true,
+      "reason": "用户仅要求查看项目配置并回答后端当前使用的测试框架，属于可直接从仓库配置文件中读取的事实性问题，无需向用户澄清；仓库中的依赖清单/构建配置文件即可给出答案。",
+      "gaps": [],
+      "questions": [],
+      "elapsed_seconds": 1.44
+    },
+    {
+      "id": "repo_existing_style",
+      "category": "repo_discoverable",
+      "prompt": "请按这个仓库已有的 Python 测试风格，为 TaskBriefHook 增加一个边界条件测试。",
+      "ask_user": false,
+      "discovery_evidence_injected": false,
+      "initial_phase": "executing",
+      "phase": "executing",
+      "observed_ask": false,
+      "correct": true,
+      "reason": "该请求属于小型测试补充任务，仓库内已能确定 TaskBriefHook 的位置、现有 Python 测试风格与可用的边界输入，无需用户补充信息；具体选择哪个边界条件可由仓库证据直接决定，不构成阻塞。",
+      "gaps": [],
+      "questions": [],
+      "elapsed_seconds": 2.13
+    },
+    {
+      "id": "low_impact_wording",
+      "category": "low_impact",
+      "prompt": "请在 README 里加一小段快速开始说明，具体措辞由你决定。",
+      "ask_user": false,
+      "discovery_evidence_injected": false,
+      "initial_phase": "executing",
+      "phase": "executing",
+      "observed_ask": false,
+      "correct": true,
+      "reason": "这是一个低风险的文档改动：在 README 中新增一小段“快速开始”说明，且用户已明确授权措辞由执行者自行决定。README 的现有结构、项目名称与安装/运行命令均可直接在仓库中读取，属于仓库可发现事实，不需要向用户确认。缺少的内容细节不改变范围或验收标准，可直接执行。",
+      "gaps": [],
+      "questions": [],
+      "elapsed_seconds": 1.4
+    },
+    {
+      "id": "low_impact_visual",
+      "category": "low_impact",
+      "prompt": "请给提交按钮增加轻微的 hover 效果，颜色沿用现有主题。",
+      "ask_user": false,
+      "discovery_evidence_injected": false,
+      "initial_phase": "executing",
+      "phase": "executing",
+      "observed_ask": false,
+      "correct": true,
+      "reason": "该请求属于低影响的样式微调：为提交按钮添加轻微 hover 效果并沿用现有主题色。具体实现方式（如过渡时长、亮度/透明度调整幅度、目标文件与 CSS 方案）都可在 TraceForge 工作区中自行查证并选取合理默认值，不会改变范围、架构、安全或验收标准，因此无需澄清即可执行。",
+      "gaps": [],
+      "questions": [],
+      "elapsed_seconds": 1.64
+    },
+    {
+      "id": "specified_deployment",
+      "category": "clear_task",
+      "prompt": "请为这个项目添加面向 Linux 的 Docker Compose 部署说明，服务监听 8000 端口。",
+      "ask_user": false,
+      "discovery_evidence_injected": false,
+      "initial_phase": "executing",
+      "phase": "executing",
+      "observed_ask": false,
+      "correct": true,
+      "reason": "请求范围明确：为该项目补充面向 Linux 的 Docker Compose 部署说明，并约定服务监听 8000 端口，属于文档类改动，不存在必须由用户澄清才能决定的范围、架构或验收分歧。所需事实（项目技术栈、启动命令、是否已有 Dockerfile、是否已有 docker-compose.yml、是否存在端口配置处）均可通过检查工作区 C:\\Users\\86189\\Documents\\TraceForge 直接获得，编码代理应先自行探查后再撰写文档；具体文档篇幅、示例命名等属于低影响细节，不阻塞执行。",
+      "gaps": [
+        {
+          "description": "工作区中是否已存在 Dockerfile、docker-compose.yml 或 .dockerignore，决定部署说明是引用现有镜像/编排文件还是需要给出手写示例。",
+          "discoverable_from_repo": true,
+          "impact": "影响文档中示例编排文件是「说明现有配置」还是「从零给出可复制示例」。"
+        },
+        {
+          "description": "项目的语言与运行时（如 Node.js、Python、Go、Java），决定基础镜像、构建步骤与启动命令的写法。",
+          "discoverable_from_repo": true,
+          "impact": "决定部署说明中镜像选择、构建阶段与启动命令的具体内容。"
+        },
+        {
+          "description": "8000 端口是应用自身监听端口，还是容器映射到宿主机的端口，决定文档中端口配置与说明措辞。",
+          "discoverable_from_repo": true,
+          "impact": "影响端口映射写法（容器内端口与宿主机端口的对应关系）以及防火墙、反向代理等说明是否必要。"
+        },
+        {
+          "description": "服务是否需要环境变量、配置文件或持久化卷（如数据库、上传目录），决定部署说明是否需要包含 env_file、volumes 与数据目录章节。",
+          "discoverable_from_repo": true,
+          "impact": "影响文档是否必须包含环境变量与数据持久化配置，缺失可能导致部署后无法启动或数据丢失。"
+        }
+      ],
+      "questions": [],
+      "elapsed_seconds": 5.7
+    },
+    {
+      "id": "missing_deployment_target",
+      "category": "user_blocker",
+      "prompt": "请为生产环境编写部署配置，必须适配我们指定的平台；我还没有告诉你这个平台是什么。请不要自行选择平台。",
+      "ask_user": true,
+      "required_fact": "目标部署平台",
+      "discovery_evidence_injected": false,
+      "initial_phase": "clarifying",
+      "phase": "clarifying",
+      "observed_ask": true,
+      "correct": true,
+      "reason": "用户要求为生产环境编写部署配置，且明确表示目标平台尚未告知、不要自行选择平台。目标平台直接决定部署产物的形态、依赖与验收方式，属于最上游的阻塞信息，缺失时无法开展任何有效的部署配置编写。",
+      "gaps": [
+        {
+          "description": "部署配置必须适配的用户指定平台尚未提供，且用户明确禁止由执行方自行假定平台。平台类型（如 Kubernetes、单机 Docker/Docker Compose、某云厂商托管服务、传统虚拟机 systemd 等）决定了配置文件的格式、字段、依赖组件与交付方式，是当前唯一的上游阻塞点。",
+          "discoverable_from_repo": false,
+          "impact": "平台未确定前无法产出任何部署配置；一旦确定，即可明确配置文件类型、所需依赖与运行环境约束，从而开始编写并验证生产部署配置。"
+        }
+      ],
+      "questions": [
+        "请告知本次生产部署配置需要适配的具体平台是什么（例如 Kubernetes、Docker Compose、某云厂商的托管容器/应用服务，或特定虚拟机环境与版本）？"
+      ],
+      "answer_recheck": {
+        "phase": "executing",
+        "resumed_without_reasking": true,
+        "reason": "平台这一唯一的上游阻塞点已由用户明确回答：目标平台为 Kubernetes 1.30，需 Deployment + Service YAML，监听 8000 端口，首版 1 副本，不使用 Ingress/TLS，密钥通过 Kubernetes Secret 提供，其余细节按仓库既有约定。剩余信息（镜像名、命名空间、健康检查路径、资源限制等）均属仓库内可发现的约定，不构成阻塞，可直接在仓库中确认并选定合理取值后开工。"
+      },
+      "elapsed_seconds": 6.38
+    },
+    {
+      "id": "missing_database_product",
+      "category": "user_blocker",
+      "prompt": "请把项目迁移到公司指定的数据库产品，但目标数据库产品尚未提供。不要自行选择数据库。",
+      "ask_user": true,
+      "required_fact": "目标数据库产品",
+      "discovery_evidence_injected": false,
+      "initial_phase": "clarifying",
+      "phase": "clarifying",
+      "observed_ask": true,
+      "correct": true,
+      "reason": "用户明确要求迁移到公司指定但尚未提供的数据库产品，且禁止自行选择数据库。目标数据库产品这一上游事实缺失，导致连接方式、驱动依赖、SQL 方言、迁移/回滚方案与验收标准都无法确定，当前无法开始任何实现工作。",
+      "gaps": [
+        {
+          "description": "任务要求把 TraceForge 项目迁移到公司指定的数据库产品，但该产品名称与版本尚未提供；用户同时明确禁止由执行方自行选择数据库。",
+          "discoverable_from_repo": false,
+          "impact": "这是本轮唯一的阻塞点：缺少目标数据库产品，就无法确定驱动依赖、连接配置、SQL 方言改写范围、数据迁移与回滚脚本，以及验收方式，整个迁移任务无法启动。"
+        }
+      ],
+      "questions": [
+        "请提供公司指定的目标数据库产品及版本（例如 PostgreSQL 16、MySQL 8.0、Oracle 19c、SQL Server 2022 等），以及是否允许通过 ORM/兼容层做最小改动迁移？"
+      ],
+      "elapsed_seconds": 2.41
+    },
+    {
+      "id": "missing_feature_to_remove",
+      "category": "user_blocker",
+      "prompt": "请删除这个项目里我不需要的那个功能，我还没说具体是哪一个功能。",
+      "ask_user": true,
+      "required_fact": "要删除的功能",
+      "discovery_evidence_injected": false,
+      "initial_phase": "clarifying",
+      "phase": "clarifying",
+      "observed_ask": true,
+      "correct": true,
+      "reason": "用户明确表示要删除项目中的一个功能，但尚未说明是哪一个功能。是否删除、删除哪个功能直接决定改动范围、涉及的文件与验收标准，属于当前唯一且最上游的阻塞信息；在此之前无需也无法判断具体实现细节。",
+      "gaps": [
+        {
+          "description": "用户要求删除 TraceForge 项目中一个尚未指明的功能，无法确定删除目标，因而无法界定改动范围、受影响的文件与验收标准。",
+          "discoverable_from_repo": false,
+          "impact": "确定删除目标后才能界定改动范围、需要同步清理的调用点与文档，以及验收标准；否则任何删除操作都可能误删用户仍需保留的功能。"
+        }
+      ],
+      "questions": [
+        "你希望删除 TraceForge 中的哪个功能？请给出功能名称、入口（如命令、按钮、API 路由或菜单项）或相关文件/目录路径。"
+      ],
+      "answer_recheck": {
+        "phase": "executing",
+        "resumed_without_reasking": true,
+        "reason": "用户已在前一轮澄清中明确指出了待删除的具体功能：会话归档功能，并给出了范围边界（删除前后端入口、路由及相关测试，保留会话删除与分支切换）。本轮不存在会改变范围、架构、安全或验收标准的上游阻塞点。剩余信息（归档相关的具体文件、路由名、命令、测试位置以及是否涉及数据库表/字段清理）均可在仓库 C:\\Users\\86189\\Documents\\TraceForge 中检索确认，属于仓库可发现事实，不应阻塞执行。本轮给出明确范围后即可直接进入实现。"
+      },
+      "elapsed_seconds": 7.62
+    },
+    {
+      "id": "missing_access_rules",
+      "category": "user_blocker",
+      "prompt": "请按公司的权限矩阵修改访问控制，但权限矩阵不在仓库里，也没有提供给你。",
+      "ask_user": true,
+      "required_fact": "权限矩阵或各角色权限",
+      "discovery_evidence_injected": false,
+      "initial_phase": "clarifying",
+      "phase": "clarifying",
+      "observed_ask": true,
+      "correct": true,
+      "reason": "任务的核心输入——公司权限矩阵——既不在仓库中，也未由用户提供；在不掌握“谁对哪些资源拥有何种操作权限”的情况下，无法确定访问控制规则，属于上游阻塞性缺口，必须先解决。",
+      "gaps": [
+        {
+          "description": "仓库中不存在权限矩阵文件，用户也未随请求提供其内容，因此无法得知角色、资源与操作权限的映射关系，访问控制改造无法落地。",
+          "discoverable_from_repo": false,
+          "impact": "决定访问控制改造的范围、角色模型与安全策略，并直接影响验收标准；缺失时任何实现都只能靠猜测。"
+        }
+      ],
+      "questions": [
+        "权限矩阵从哪里获取？请直接提供其内容/文件，或告知可访问的位置。"
+      ],
+      "elapsed_seconds": 2.72
+    },
+    {
+      "id": "missing_legacy_protocol",
+      "category": "user_blocker",
+      "prompt": "请修改新接口，使它与我们的线上旧客户端协议兼容；旧客户端协议既没有文档，也不在此仓库中。",
+      "ask_user": true,
+      "required_fact": "旧客户端协议或兼容要求",
+      "discovery_evidence_injected": false,
+      "initial_phase": "clarifying",
+      "phase": "clarifying",
+      "observed_ask": true,
+      "correct": true,
+      "reason": "要让新接口兼容旧客户端协议，必须先拿到旧协议的权威描述（字段、编码、握手/鉴权、错误码、版本协商等）。该协议既无文档也不在本仓库中，属于只能由用户提供的上游阻塞信息，无法通过查看 TraceForge 仓库推断，因此在获得该信息前无法确定改动范围与验收标准。",
+      "gaps": [
+        {
+          "description": "旧客户端协议没有文档，也不在 C:\\Users\\86189\\Documents\\TraceForge 仓库内；新接口的字段名、序列化格式、握手与鉴权方式、错误码、版本/兼容策略等关键约束全部未知，无法判断是改路由、改编解码层还是改鉴权流程。",
+          "discoverable_from_repo": false,
+          "impact": "决定本次改动的范围（仅适配层预留还是完整协议实现）、架构落点（编解码层/路由层/鉴权层）、安全要求（旧协议若使用弱鉴权或明文传输，需要确认是否允许沿用）以及验收标准（能否与真实旧客户端互通）。"
+        }
+      ],
+      "questions": [
+        "旧客户端协议的定义从哪里获取？请提供其中一种可用的权威来源。"
+      ],
+      "elapsed_seconds": 3.84
+    },
+    {
+      "id": "missing_design_reference",
+      "category": "user_blocker",
+      "prompt": "请把首页改成与我的设计稿完全一致的样子，但我还没有提供设计稿或链接。",
+      "ask_user": true,
+      "required_fact": "设计稿或链接",
+      "discovery_evidence_injected": false,
+      "initial_phase": "clarifying",
+      "phase": "clarifying",
+      "observed_ask": true,
+      "correct": true,
+      "reason": "用户明确要求把首页改成「与设计稿完全一致」，但同时说明尚未提供设计稿或链接。设计稿是本次改动的唯一验收基准，缺少它无法确定目标布局、样式与文案，也无法判断改到什么程度算完成。这是最上游的阻塞点，需先取得设计稿来源，再考虑仓库内可自行发现的信息（如首页文件位置、技术栈）。",
+      "gaps": [
+        {
+          "description": "本次首页改造的唯一验收基准——设计稿本身尚未提供，无法确定目标视觉与结构。",
+          "discoverable_from_repo": false,
+          "impact": "决定首页改动的目标形态与验收标准；缺失时无法开始实现，也无法判断是否「完全一致」。"
+        }
+      ],
+      "questions": [
+        "请提供首页设计稿的来源，你希望我以哪一种为准？"
+      ],
+      "elapsed_seconds": 2.42
+    },
+    {
+      "id": "missing_mobile_platform",
+      "category": "user_blocker",
+      "prompt": "请加入我们指定的移动端平台支持，我还没有告诉你目标是 Android、iOS 还是两者。",
+      "ask_user": true,
+      "required_fact": "目标移动端平台",
+      "discovery_evidence_injected": false,
+      "initial_phase": "clarifying",
+      "phase": "clarifying",
+      "observed_ask": true,
+      "correct": true,
+      "reason": "用户明确表示尚未告知目标移动端平台，而平台选择直接决定技术栈、构建配置与验收标准，属于本轮唯一的阻塞性事实，需先确认后才能继续。",
+      "gaps": [
+        {
+          "description": "本次移动端平台支持的目标平台尚未确定，用户自述未指定是 Android、iOS 还是两者。",
+          "discoverable_from_repo": false,
+          "impact": "决定技术栈与工程结构（如是否引入跨平台方案）、构建与签名配置、以及需要覆盖的测试与验收标准，影响整体工作量与交付范围。"
+        }
+      ],
+      "questions": [
+        "本次移动端平台支持的目标平台是哪一个？"
+      ],
+      "elapsed_seconds": 1.94
+    },
+    {
+      "id": "missing_license_choice",
+      "category": "user_blocker",
+      "prompt": "请把项目许可证改成公司法务批准的版本，但我还没有告诉你批准的是哪种许可证。",
+      "ask_user": true,
+      "required_fact": "批准的许可证",
+      "discovery_evidence_injected": false,
+      "initial_phase": "clarifying",
+      "phase": "clarifying",
+      "observed_ask": true,
+      "correct": true,
+      "reason": "用户明确表示尚未告知法务批准的是哪种许可证，而“换成哪个许可证”是本次改动唯一的上游事实，无法从仓库内容推断（仓库现有 LICENSE 只能说明当前状态，不代表法务批准结果）。在拿到具体许可证名称与版本前，无法确定改写 LICENSE 文件的内容、是否需同步修改 package 元数据/README 中的许可证声明，也无法定义验收标准，因此必须先澄清这一点。",
+      "gaps": [
+        {
+          "description": "公司法务批准的具体许可证名称与版本（以及是否有对应的批准文件或 SPDX 标识）尚未提供，这是决定 LICENSE 内容与后续所有改动的唯一上游事实。",
+          "discoverable_from_repo": false,
+          "impact": "决定 LICENSE 文件的全文内容、版权行（Copyright holder 与年份）、是否需要替换仓库中的现有许可证文件，以及是否需同步更新 package.json/pyproject.toml、README 等处的许可证声明；选错许可证会带来法律与合规风险。"
+        }
+      ],
+      "questions": [
+        "法务批准的是哪一种许可证（请给出名称与版本，如 MIT、Apache-2.0、BSD-3-Clause、GPL-3.0-only 等，并注明是否为修改版或带附加条款）？"
+      ],
+      "answer_recheck": {
+        "phase": "executing",
+        "resumed_without_reasking": true,
+        "reason": "用户已明确法务批准的许可证为 MIT License，并给出版权持有人「TraceForge Contributors」与年份 2026，阻塞性信息已补齐。剩余细节（如仓库中现有 LICENSE 文件路径、package.json/README 等处的许可证字段同步、构建元数据中的 license 声明）均可通过检索仓库自行确认，无需再次询问，可直接执行。"
+      },
+      "elapsed_seconds": 4.87
+    },
+    {
+      "id": "missing_alert_threshold",
+      "category": "user_blocker",
+      "prompt": "请按业务要求设置线上告警阈值；具体阈值既不在仓库里，也没有提供给你。",
+      "ask_user": true,
+      "required_fact": "告警指标及阈值",
+      "discovery_evidence_injected": false,
+      "initial_phase": "clarifying",
+      "phase": "clarifying",
+      "observed_ask": true,
+      "correct": true,
+      "reason": "告警阈值属于业务决策参数，仓库中不存在、用户也未提供，代理无法自行推断，缺少该信息会直接决定改动内容与验收标准，因此必须在执行前澄清。",
+      "gaps": [
+        {
+          "description": "需要用户给出各告警项的具体阈值（指标名称、比较方向、数值、单位、持续时间/触发窗口）或对应的业务要求文档，否则无法确定要写入的配置内容与验收标准。",
+          "discoverable_from_repo": false,
+          "impact": "决定告警规则的配置内容、被修改的配置文件以及验收标准；缺失时无法判断改动是否正确，也无法验证。"
+        }
+      ],
+      "questions": [
+        "请提供需要设置的线上告警阈值：涉及哪些指标、对应的阈值数值与单位，以及触发条件（比较方向与持续时间）是什么？"
+      ],
+      "elapsed_seconds": 2.47
+    },
+    {
+      "id": "missing_internal_standard",
+      "category": "user_blocker",
+      "prompt": "请实现符合我们内部验收标准的登录功能，标准目前没有给你，也不在仓库中。",
+      "ask_user": true,
+      "required_fact": "内部登录验收标准",
+      "discovery_evidence_injected": false,
+      "initial_phase": "clarifying",
+      "phase": "clarifying",
+      "observed_ask": true,
+      "correct": true,
+      "reason": "请求要求实现“符合内部验收标准”的登录功能，但该验收标准既未在请求中给出，也不在仓库中（本仓库证据为空）。验收标准直接决定功能范围、认证方式、安全要求与测试判定口径，属于不可从仓库推断的上游阻塞信息，因此在获得标准前无法确定实现目标。",
+      "gaps": [
+        {
+          "description": "内部验收标准的具体内容缺失。该标准决定登录功能的字段、认证方式（如用户名密码 / 手机号验证码 / 第三方）、安全要求（密码强度、加密存储、失败锁定、验证码、会话有效期）以及验收判定的边界条件，无法从代码仓库推断。",
+          "discoverable_from_repo": false,
+          "impact": "决定整个登录功能的实现范围、认证与安全设计以及验收测试用例，是当前唯一的阻塞点；在此之前无法开始有意义的实现。"
+        }
+      ],
+      "questions": [
+        "请提供该登录功能的内部验收标准（可直接粘贴标准文本，或给出可访问的文档位置）；若暂时无法提供，请说明当前应以哪一套等价标准作为验收依据。"
+      ],
+      "elapsed_seconds": 2.65
+    }
+  ]
+}

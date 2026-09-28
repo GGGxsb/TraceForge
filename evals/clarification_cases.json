@@ -1,0 +1,152 @@
+[
+  {
+    "id": "greeting_hello",
+    "category": "conversation",
+    "prompt": "你好",
+    "ask_user": false,
+    "note": "普通问候应直接回答。"
+  },
+  {
+    "id": "greeting_checkin",
+    "category": "conversation",
+    "prompt": "在吗？",
+    "ask_user": false,
+    "note": "简短寒暄不应进入需求澄清。"
+  },
+  {
+    "id": "capability_question",
+    "category": "conversation",
+    "prompt": "你能帮我查看这个项目的代码吗？",
+    "ask_user": false,
+    "note": "能力询问可以直接回答。"
+  },
+  {
+    "id": "clear_readme_edit",
+    "category": "clear_task",
+    "prompt": "请把 README.md 第一行标题中的 TraceFroge 拼写改成 TraceForge。",
+    "ask_user": false,
+    "note": "目标文件和期望改动明确。"
+  },
+  {
+    "id": "clear_test_run",
+    "category": "clear_task",
+    "prompt": "请运行这个项目现有的后端单元测试，并报告失败的测试名称。",
+    "ask_user": false,
+    "note": "测试命令可以从仓库发现。"
+  },
+  {
+    "id": "repo_test_framework",
+    "category": "repo_discoverable",
+    "prompt": "请查看项目配置，告诉我后端当前使用什么测试框架。",
+    "ask_user": false,
+    "note": "答案在 pyproject.toml 中，不应问用户。",
+    "repo_evidence": [{"tool": "read_file", "path": "pyproject.toml", "result": "[tool.pytest.ini_options]\ntestpaths = [\"backend/tests\"]\nasyncio_mode = \"auto\""}]
+  },
+  {
+    "id": "repo_existing_style",
+    "category": "repo_discoverable",
+    "prompt": "请按这个仓库已有的 Python 测试风格，为 TaskBriefHook 增加一个边界条件测试。",
+    "ask_user": false,
+    "note": "测试风格可从仓库已有测试发现。",
+    "repo_evidence": [{"tool": "list_files", "result": "backend/tests/test_task_brief.py; backend/tests/test_agent.py; pyproject.toml"}]
+  },
+  {
+    "id": "low_impact_wording",
+    "category": "low_impact",
+    "prompt": "请在 README 里加一小段快速开始说明，具体措辞由你决定。",
+    "ask_user": false,
+    "note": "用户明确授权自行决定措辞。"
+  },
+  {
+    "id": "low_impact_visual",
+    "category": "low_impact",
+    "prompt": "请给提交按钮增加轻微的 hover 效果，颜色沿用现有主题。",
+    "ask_user": false,
+    "note": "小幅样式选择可以从现有代码推断。"
+  },
+  {
+    "id": "specified_deployment",
+    "category": "clear_task",
+    "prompt": "请为这个项目添加面向 Linux 的 Docker Compose 部署说明，服务监听 8000 端口。",
+    "ask_user": false,
+    "note": "平台和端口已经明确。"
+  },
+  {
+    "id": "missing_deployment_target",
+    "category": "user_blocker",
+    "prompt": "请为生产环境编写部署配置，必须适配我们指定的平台；我还没有告诉你这个平台是什么。请不要自行选择平台。",
+    "ask_user": true,
+    "required_fact": "目标部署平台",
+    "oracle_answer": "目标平台是 Kubernetes 1.30，请生成 Deployment 和 Service YAML，服务监听 8000 端口；首版 1 个副本，不配置 Ingress/TLS，密钥使用 Kubernetes Secret，其他细节按现有仓库约定。"
+  },
+  {
+    "id": "missing_database_product",
+    "category": "user_blocker",
+    "prompt": "请把项目迁移到公司指定的数据库产品，但目标数据库产品尚未提供。不要自行选择数据库。",
+    "ask_user": true,
+    "required_fact": "目标数据库产品"
+  },
+  {
+    "id": "missing_feature_to_remove",
+    "category": "user_blocker",
+    "prompt": "请删除这个项目里我不需要的那个功能，我还没说具体是哪一个功能。",
+    "ask_user": true,
+    "required_fact": "要删除的功能",
+    "oracle_answer": "请彻底删除会话归档功能及其前后端入口、路由和相关测试，保留会话删除与分支切换。"
+  },
+  {
+    "id": "missing_access_rules",
+    "category": "user_blocker",
+    "prompt": "请按公司的权限矩阵修改访问控制，但权限矩阵不在仓库里，也没有提供给你。",
+    "ask_user": true,
+    "required_fact": "权限矩阵或各角色权限",
+    "repo_evidence": [{"tool": "search_code", "query": "权限矩阵|role permissions", "result": "仓库中未找到公司权限矩阵或各角色的目标权限规则。"}]
+  },
+  {
+    "id": "missing_legacy_protocol",
+    "category": "user_blocker",
+    "prompt": "请修改新接口，使它与我们的线上旧客户端协议兼容；旧客户端协议既没有文档，也不在此仓库中。",
+    "ask_user": true,
+    "required_fact": "旧客户端协议或兼容要求",
+    "repo_evidence": [{"tool": "search_code", "query": "legacy client protocol", "result": "仓库中没有线上旧客户端协议文档、协议示例或兼容性测试。"}]
+  },
+  {
+    "id": "missing_design_reference",
+    "category": "user_blocker",
+    "prompt": "请把首页改成与我的设计稿完全一致的样子，但我还没有提供设计稿或链接。",
+    "ask_user": true,
+    "required_fact": "设计稿或链接"
+  },
+  {
+    "id": "missing_mobile_platform",
+    "category": "user_blocker",
+    "prompt": "请加入我们指定的移动端平台支持，我还没有告诉你目标是 Android、iOS 还是两者。",
+    "ask_user": true,
+    "required_fact": "目标移动端平台",
+    "repo_evidence": [{"tool": "list_files", "result": "现有项目仅包含 React Web 前端和 FastAPI 后端，没有 Android 或 iOS 目标平台配置。"}]
+  },
+  {
+    "id": "missing_license_choice",
+    "category": "user_blocker",
+    "prompt": "请把项目许可证改成公司法务批准的版本，但我还没有告诉你批准的是哪种许可证。",
+    "ask_user": true,
+    "required_fact": "批准的许可证",
+    "oracle_answer": "法务批准 MIT License，版权持有人写 TraceForge Contributors，年份 2026。",
+    "repo_evidence": [{"tool": "search_code", "query": "company legal approved license", "result": "仓库中没有公司法务批准的许可证决策记录。"}]
+  },
+  {
+    "id": "missing_alert_threshold",
+    "category": "user_blocker",
+    "prompt": "请按业务要求设置线上告警阈值；具体阈值既不在仓库里，也没有提供给你。",
+    "ask_user": true,
+    "required_fact": "告警指标及阈值",
+    "repo_evidence": [{"tool": "search_code", "query": "alert threshold monitoring", "result": "仓库中没有业务告警阈值或对应的监控配置。"}]
+  },
+  {
+    "id": "missing_internal_standard",
+    "category": "user_blocker",
+    "prompt": "请实现符合我们内部验收标准的登录功能，标准目前没有给你，也不在仓库中。",
+    "ask_user": true,
+    "required_fact": "内部登录验收标准"
+  }
+]

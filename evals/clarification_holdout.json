@@ -1,0 +1,120 @@
+[
+  {
+    "id": "holdout_thanks",
+    "category": "conversation",
+    "prompt": "谢谢，先这样。",
+    "ask_user": false,
+    "note": "结束语应直接回应。"
+  },
+  {
+    "id": "holdout_capability_scope",
+    "category": "conversation",
+    "prompt": "TraceForge 能读取本地仓库中的哪些文件？",
+    "ask_user": false,
+    "note": "能力范围提问无需需求澄清。"
+  },
+  {
+    "id": "holdout_exact_ui_label",
+    "category": "clear_task",
+    "prompt": "把左侧栏里的「工作区」三个字改成「项目」。",
+    "ask_user": false,
+    "note": "目标和替换文本已经明确。"
+  },
+  {
+    "id": "holdout_health_test",
+    "category": "repo_discoverable",
+    "prompt": "给现有的 /api/health 路由补一条测试，沿用仓库已有的测试风格。",
+    "ask_user": false,
+    "note": "路由和测试惯例均可从仓库查到。"
+  },
+  {
+    "id": "holdout_dependency_location",
+    "category": "repo_discoverable",
+    "prompt": "查一下后端依赖是在哪个文件声明的，告诉我文件名就行。",
+    "ask_user": false,
+    "note": "这是只读仓库事实查询。"
+  },
+  {
+    "id": "holdout_readme_polish",
+    "category": "low_impact",
+    "prompt": "把 README 里的启动步骤写得更清楚一些，具体措辞由你决定。",
+    "ask_user": false,
+    "note": "用户将措辞选择交给 Agent。"
+  },
+  {
+    "id": "holdout_frontend_tests",
+    "category": "clear_task",
+    "prompt": "运行项目现有的前端测试，只列出失败的用例。",
+    "ask_user": false,
+    "note": "测试脚本可从 package.json 发现。"
+  },
+  {
+    "id": "holdout_error_color",
+    "category": "low_impact",
+    "prompt": "错误提示的颜色太刺眼了，请沿用当前主题稍微弱化一点。",
+    "ask_user": false,
+    "note": "小幅样式取舍不应阻塞。"
+  },
+  {
+    "id": "holdout_release_target",
+    "category": "user_blocker",
+    "prompt": "给这个项目准备发布配置，平台按我们上次定的来。",
+    "ask_user": true,
+    "required_fact": "此前商定的发布平台",
+    "oracle_answer": "目标是 AWS ECS Fargate，容器监听 8000 端口；本次只需任务定义和服务配置。"
+  },
+  {
+    "id": "holdout_rate_limit_quota",
+    "category": "user_blocker",
+    "prompt": "给登录接口加限流，按产品团队批的配额配置。",
+    "ask_user": true,
+    "required_fact": "产品批准的具体限流配额",
+    "oracle_answer": "每个 IP 每分钟最多 10 次登录尝试，超过后返回 HTTP 429；不需要额外的用户维度限流。"
+  },
+  {
+    "id": "holdout_design_reference",
+    "category": "user_blocker",
+    "prompt": "把首页还原成我那张设计稿。",
+    "ask_user": true,
+    "required_fact": "设计稿本身或可访问链接"
+  },
+  {
+    "id": "holdout_unknown_module",
+    "category": "user_blocker",
+    "prompt": "把我不再使用的那个模块彻底删掉。",
+    "ask_user": true,
+    "required_fact": "要删除的具体模块"
+  },
+  {
+    "id": "holdout_conversion_formula",
+    "category": "user_blocker",
+    "prompt": "为报表加入我们业务定义的转化率，按既定口径计算。",
+    "ask_user": true,
+    "required_fact": "转化率计算口径",
+    "repo_evidence": [{"tool": "search_code", "query": "conversion rate formula", "result": "仓库中没有业务转化率口径、公式或示例数据。"}]
+  },
+  {
+    "id": "holdout_sso_requirements",
+    "category": "user_blocker",
+    "prompt": "登录改用公司的 SSO，并按公司现行接入要求实现。",
+    "ask_user": true,
+    "required_fact": "公司 SSO 接入规范或身份提供方资料",
+    "oracle_answer": "就是公司平时用的那个 SSO。",
+    "answer_expected_phase": "clarifying",
+    "repo_evidence": [{"tool": "search_code", "query": "SSO OIDC SAML", "result": "仓库中没有公司 SSO 的接入规范、端点或客户端配置。"}]
+  },
+  {
+    "id": "holdout_log_retention",
+    "category": "user_blocker",
+    "prompt": "清理用户事件日志，保留时长按合规团队的规定。",
+    "ask_user": true,
+    "required_fact": "合规团队规定的保留时长"
+  },
+  {
+    "id": "holdout_partner_signature",
+    "category": "user_blocker",
+    "prompt": "把订单状态同步到合作方 Webhook，按他们给我们的签名规范发送。",
+    "ask_user": true,
+    "required_fact": "合作方 Webhook 签名规范"
+  }
+]
