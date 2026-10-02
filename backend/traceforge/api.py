@@ -44,6 +44,12 @@ class RunCreate(BaseModel):
     content: str = Field(min_length=1)
 
 
+class QueuedMessageCreate(BaseModel):
+    run_id: str
+    content: str = Field(min_length=1)
+    timing: Literal["after_tool_batch", "after_run"]
+
+
 class ApprovalDecisionRequest(BaseModel):
     session_id: str
     decision: str
@@ -78,6 +84,8 @@ class ModelSettingsUpdate(BaseModel):
     base_url: str | None = Field(default=None, max_length=2048)
     brief_model: str | None = Field(default=None, max_length=200)
     fallback_model: str | None = Field(default=None, max_length=200)
+    context_window: int | None = Field(default=None, ge=1024)
+    fallback_context_window: int | None = Field(default=None, ge=1024)
 
 
 class ApiServices:
@@ -98,6 +106,7 @@ class ApiServices:
         skills: SkillCatalog | None = None,
         checkpoints: CheckpointStore | None = None,
         worktrees: WorktreeManager | None = None,
+        handoff_store = None,
     ) -> None:
         self.workspaces = workspaces
         self.inspector = inspector
@@ -113,6 +122,7 @@ class ApiServices:
         self.skills = skills
         self.checkpoints = checkpoints
         self.worktrees = worktrees
+        self.handoff_store = handoff_store
         self.model_configuration_lock = asyncio.Lock()
         self.folder_picker_lock = asyncio.Lock()
         self.session_transition_locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
@@ -166,13 +176,17 @@ def build_router(services: ApiServices) -> APIRouter:
             if any(run.task and not run.task.done() for run in services.runner.runs.values()):
                 raise HTTPException(status_code=409, detail="Agent 正在运行，请结束后再修改模型配置")
             try:
-                return services.model_settings.save(
+                status = services.model_settings.save(
                     api_key=update.api_key.get_secret_value() if update.api_key else None,
                     model=update.model,
                     base_url=update.base_url,
                     brief_model=update.brief_model,
                     fallback_model=update.fallback_model,
+                    context_window=update.context_window,
+                    fallback_context_window=update.fallback_context_window,
                 )
+                services.runner.configure_context_window(status["effective_context_window"])
+                return status
             except ValueError as exc:
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
             except OSError as exc:
@@ -188,7 +202,9 @@ def build_router(services: ApiServices) -> APIRouter:
             if any(run.task and not run.task.done() for run in services.runner.runs.values()):
                 raise HTTPException(status_code=409, detail="Agent 正在运行，请结束后再修改模型配置")
             try:
-                return services.model_settings.reset()
+                status = services.model_settings.reset()
+                services.runner.configure_context_window(status["effective_context_window"])
+                return status
             except OSError as exc:
                 raise HTTPException(status_code=500, detail=f"重置模型配置失败：{type(exc).__name__}") from exc
 
@@ -276,6 +292,19 @@ def build_router(services: ApiServices) -> APIRouter:
             return services.inspector.files(workspace_id, path)
         except (KeyError, ValueError, PermissionError, OSError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @router.get("/workspaces/{workspace_id}/handoff")
+    async def workspace_handoff(workspace_id: str):
+        try:
+            services.workspaces.get(workspace_id)
+            if services.handoff_store is None:
+                raise FileNotFoundError("Project handoff is unavailable")
+            path = services.handoff_store.path_for(workspace_id)
+            if not path.is_file():
+                raise FileNotFoundError("Project handoff has not been created")
+        except (KeyError, FileNotFoundError, ValueError) as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return FileResponse(path, media_type="text/markdown", filename="handoff.md")
 
     @router.get("/workspaces/{workspace_id}/skills")
     async def workspace_skills(workspace_id: str):
@@ -432,10 +461,26 @@ def build_router(services: ApiServices) -> APIRouter:
                     services.sessions.get(session_id), services.checkpoints,
                 ) if services.worktrees else []
                 services.sessions.delete(session_id, services.artifacts_root)
+                if services.runner.subagents:
+                    services.runner.subagents.delete(session_id)
                 if services.checkpoints:
                     services.checkpoints.delete_session(session_id)
                 return {"id": session_id, "deleted": True,
                         "preserved_branches": preserved_branches}
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except (ValueError, OSError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @router.get("/sessions/{session_id}/subagents/{child_id}")
+    async def get_subagent(session_id: str, child_id: str):
+        if services.runner.subagents is None:
+            raise HTTPException(status_code=404, detail="Subagents are unavailable")
+        try:
+            child = services.runner.subagents.get(session_id, child_id)
+            return {"header": child.header.model_dump(mode="json"),
+                    "entries": [entry.model_dump(mode="json") for entry in child.entries],
+                    "recovery_issues": child.recovery_issues}
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except (ValueError, OSError) as exc:
@@ -448,6 +493,32 @@ def build_router(services: ApiServices) -> APIRouter:
             return session.get_turn_tree() if granularity == "turn" else session.get_tree()
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @router.get("/sessions/{session_id}/handoffs/{entry_id}")
+    async def session_handoff(session_id: str, entry_id: str):
+        try:
+            session = services.sessions.get(session_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        entry = session.by_id.get(entry_id)
+        if entry is None or entry.type not in {"compaction", "context_checkpoint"} or not entry.payload.get("handoff_file"):
+            raise HTTPException(status_code=404, detail="Handoff not found")
+        try:
+            project_handoff = (services.handoff_store.path_for(session.header.workspace_id)
+                               if services.handoff_store is not None else None)
+        except (KeyError, ValueError) as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        if project_handoff is not None and str(entry.payload["handoff_file"]) == str(project_handoff):
+            target = project_handoff
+            if not target.is_file():
+                raise HTTPException(status_code=404, detail="Project handoff not found")
+            return FileResponse(target, media_type="text/markdown", filename="handoff.md")
+        root = session.path.parent.parent.resolve()
+        directory = (root / "handoffs" / session.path.stem).resolve()
+        target = (root / str(entry.payload["handoff_file"])).resolve()
+        if not target.is_relative_to(directory) or not target.is_file():
+            raise HTTPException(status_code=404, detail="Handoff file not found")
+        return FileResponse(target, media_type="text/markdown", filename=f"handoff-{entry_id}.md")
 
     @router.get("/sessions/{session_id}/active-run")
     async def active_session_run(session_id: str):
@@ -480,6 +551,58 @@ def build_router(services: ApiServices) -> APIRouter:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @router.post("/sessions/{session_id}/queued-messages")
+    async def queue_message(session_id: str, request: QueuedMessageCreate):
+        try:
+            async with services.session_transition_locks[session_id]:
+                session = services.sessions.get(session_id)
+                if session.archived:
+                    raise HTTPException(status_code=409, detail="会话已归档")
+                entry = await services.runner.queue_message(
+                    session_id, request.run_id, request.content, request.timing,
+                )
+                return {"id": entry.id, "timing": request.timing, "status": "pending"}
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @router.delete("/sessions/{session_id}/queued-messages/{message_id}")
+    async def cancel_queued_message(session_id: str, message_id: str):
+        try:
+            async with services.session_transition_locks[session_id]:
+                await services.runner.cancel_queued_message(session_id, message_id)
+                return {"id": message_id, "status": "cancelled"}
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @router.post("/sessions/{session_id}/queued-messages/{message_id}/start")
+    async def start_queued_message(session_id: str, message_id: str):
+        try:
+            async with services.model_configuration_lock:
+                session = services.sessions.get(session_id)
+                async with services.workspace_transition_locks[session.header.workspace_id]:
+                    async with services.session_transition_locks[session_id]:
+                        if session.archived or _workspace_has_active_run(session):
+                            raise HTTPException(status_code=409, detail="会话已归档或工作区正在运行")
+                        _assert_workspace_aligned(session)
+                        entry = next((item for item in services.runner.pending_messages(session)
+                                      if item.id == message_id), None)
+                        if entry is None:
+                            raise HTTPException(status_code=404, detail="待发送消息不存在")
+                        run = services.runner.start(
+                            session_id, str(entry.payload["content"]),
+                            queued_message_id=entry.id,
+                            queue_chain_root=str(entry.payload.get("queue_chain_root") or entry.id),
+                        )
+                        return {"run_id": run.id, "status": run.status.value}
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except (RuntimeError, CheckpointError) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     @router.post("/runs/{run_id}/cancel")
     async def cancel_run(run_id: str):

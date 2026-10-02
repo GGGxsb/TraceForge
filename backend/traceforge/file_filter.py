@@ -5,6 +5,7 @@ from pathlib import Path
 
 SKIP_PARTS = {
     ".git",
+    ".traceforge",
     ".venv",
     "node_modules",
     "dist",

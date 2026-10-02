@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from infra.runner.tool_worker import create_file, delete_file, move_file
+from infra.runner.tool_worker import apply_patch, create_file, delete_file, move_file
 from traceforge.artifacts import ArtifactStore, MAX_CONTEXT_BYTES
 from traceforge.models import RiskLevel
 from traceforge.security import PolicyEngine
@@ -24,6 +24,47 @@ def test_worker_creates_moves_and_deletes_files_without_overwriting(tmp_path: Pa
         delete_file({"path": "lib"}, tmp_path)
 
 
+def test_patch_defaults_to_one_match_and_rejects_ambiguous_or_empty_text(tmp_path: Path):
+    target = tmp_path / "file.txt"
+    target.write_text("old\nother\n", encoding="utf-8")
+    apply_patch({"path": "file.txt", "old_text": "old", "new_text": "new"}, tmp_path)
+    assert target.read_text(encoding="utf-8") == "new\nother\n"
+    for arguments, error in [
+        ({"old_text": "", "new_text": "overwrite"}, "non-empty"),
+        ({"old_text": "e", "new_text": "x"}, "matched 2 locations"),
+        ({"old_text": "new", "new_text": "x", "replace_all": "false"}, "boolean"),
+    ]:
+        with pytest.raises(ValueError, match=error):
+            apply_patch({"path": "file.txt", **arguments}, tmp_path)
+        assert target.read_text(encoding="utf-8") == "new\nother\n"
+
+
+def test_create_existing_file_reports_how_to_edit_without_overwriting(tmp_path: Path):
+    target = tmp_path / "file.txt"
+    target.write_text("original", encoding="utf-8")
+    with pytest.raises(FileExistsError, match="read_file, then apply_patch"):
+        create_file({"path": "file.txt", "content": "overwrite"}, tmp_path)
+    assert target.read_text(encoding="utf-8") == "original"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("name, arguments", [
+    ("run_command", {"command": "echo test", "network": "false"}),
+    ("run_command", {"command": "echo test", "timeout_seconds": -1}),
+    ("create_file", {"path": "file.txt"}),
+    ("apply_patch", {"path": "file.txt", "old_text": "old", "new_text": 2}),
+    ("read_file", {"path": "file.txt", "start_line": True}),
+    ("read_file", {"path": "file.txt", "unexpected": "value"}),
+])
+async def test_invalid_arguments_rejected_before_read_or_execution(tmp_path: Path, name, arguments):
+    service = ToolService(None, ArtifactStore(tmp_path / "artifacts"), tmp_path / "worker.py")
+    result = await service.execute("session", str(tmp_path), name, arguments)
+    assert result.is_error is True
+    assert "Invalid tool arguments" in result.output
+    assert "Correct the arguments and retry" in result.output
+    assert not (tmp_path / "file.txt").exists()
+
+
 def test_file_tool_policy_requires_review_for_delete_and_move(tmp_path: Path):
     source = tmp_path / "source.txt"
     source.write_text("text", encoding="utf-8")
@@ -33,9 +74,11 @@ def test_file_tool_policy_requires_review_for_delete_and_move(tmp_path: Path):
     assert policy.evaluate(
         "move_file", {"source_path": "source.txt", "destination_path": "renamed.txt"}, str(tmp_path)
     ).decision == RiskLevel.ASK
-    assert policy.evaluate(
+    external = policy.evaluate(
         "move_file", {"source_path": "source.txt", "destination_path": "../outside.txt"}, str(tmp_path)
-    ).decision == RiskLevel.DENY
+    )
+    assert external.decision == RiskLevel.ASK
+    assert "external_file_write" in external.capabilities
 
 
 @pytest.mark.asyncio

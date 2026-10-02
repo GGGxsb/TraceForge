@@ -9,7 +9,8 @@ from .model_adapter import ModelAdapter
 from .models import EntryDraft, HookContext, HookOutcome, HookPoint, RunStatus, TaskBrief
 
 
-READ_ONLY_TOOLS = {"list_files", "search_code", "read_file", "git_status", "git_diff", "read_skill"}
+READ_ONLY_TOOLS = {"list_files", "search_code", "read_file", "git_status", "git_diff", "read_skill",
+                   "search_history", "read_history_entry", "read_project_handoff", "delegate_task"}
 GREETING_ONLY = re.compile(r"^(?:你好|您好|嗨|哈喽|hello|hi|hey)[!！。,.，\s]*$", re.I)
 SMALLTALK_ONLY = re.compile(r"^(?:在吗|在不在|谢谢|多谢|辛苦了)[?？!！。,.，\s]*$")
 CAPABILITY_ONLY = re.compile(
@@ -89,6 +90,12 @@ class TaskBriefHook(AgentHook):
         request_with_workspace = (
             f"已选工作区：{workspace}\n用户请求：{context.user_text}" if workspace else context.user_text
         )
+        if context.state.get("project_handoff_available"):
+            request_with_workspace += (
+                "\n项目有可用的 .traceforge/handoff.md 交接文件，但文件内容尚未读取。"
+                "如果用户要求继续既往工作，应先用只读工具 read_project_handoff 调查，"
+                "不要仅因缺少上轮进度就向用户提问。"
+            )
         brief = await self.adapter.analyze_task_brief(request_with_workspace, context.evidence, previous)
         if brief.needs_clarification and not brief.missing_points:
             brief = brief.model_copy(update={"needs_clarification": False})

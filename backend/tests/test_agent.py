@@ -8,17 +8,22 @@ import pytest
 from infra.runner.tool_worker import create_file, delete_file
 from traceforge.agent import AgentRunner, ApprovalBroker
 from traceforge.context import CompactionService, ContextProjector
+from traceforge.memory import WorkspaceHandoffStore
 from traceforge.hooks import HookRegistry
 from traceforge.model_adapter import ModelDelta
 from traceforge.models import (
     MissingPoint,
     PermissionMode,
     RunStatus,
+    ExecutionResult,
+    HookOutcome,
+    HookPoint,
     SandboxCapabilities,
     TaskBrief,
     ToolCall,
     ToolExecutionResult,
     WorkspaceRecord,
+    utc_now,
 )
 from traceforge.security import PolicyEngine
 from traceforge.storage import EventHub, SessionStore
@@ -67,6 +72,21 @@ class LocalFileTools:
         else:
             raise AssertionError(tool_name)
         return ToolExecutionResult(output=f"{tool_name} completed")
+
+
+class RecordedSandbox:
+    def __init__(self) -> None:
+        self.requests = []
+
+    async def inspect(self):
+        return SandboxCapabilities(backend="test", ready=True)
+
+    async def execute(self, request):
+        self.requests.append(request)
+        return ExecutionResult(
+            execution_id=request.execution_id, backend="test", stdout="fetched",
+            exit_code=0, started_at=utc_now(), ended_at=utc_now(),
+        )
 
 
 class BriefFailureAdapter(FakeModelAdapter):
@@ -137,7 +157,60 @@ def make_runner(tmp_path: Path, adapter: FakeModelAdapter, tools) -> tuple[Agent
 
 
 @pytest.mark.asyncio
-async def test_auto_approve_allows_reviewable_delete_without_prompt(tmp_path: Path):
+async def test_running_agent_compacts_after_tool_batch_before_next_model_call(tmp_path: Path):
+    (tmp_path / "large.txt").write_text("x" * 6000, encoding="utf-8")
+    adapter = FakeModelAdapter(turns=[
+        [ModelDelta(type="tool_call", tool_call=ToolCall(
+            call_id="read-1", name="read_file", arguments={"path": "large.txt"},
+        )), ModelDelta(type="done")],
+        [ModelDelta(type="text_delta", text="完成"), ModelDelta(type="done")],
+    ])
+    runner, session = make_runner(tmp_path, adapter, LocalFileTools())
+    await session.append("user_message", {"content": "旧问题 " * 300})
+    await session.append("assistant_message", {"content": "旧回答 " * 300})
+    runner.projector = ContextProjector(2300, 200)
+    runner.compactor = CompactionService(adapter, 2300, 200, 300)
+    runner.compactor.handoff_store = WorkspaceHandoffStore(
+        tmp_path / "handoffs", runner.sessions, adapter, runner.compactor,
+    )
+
+    class RecordingHook:
+        name = "record_compaction_order"
+        points = {
+            HookPoint.BEFORE_MODEL_REQUEST,
+            HookPoint.AFTER_TOOL_BATCH,
+            HookPoint.BEFORE_COMPACTION,
+            HookPoint.AFTER_COMPACTION,
+        }
+        priority = 100
+        timeout_seconds = 1
+        failure_mode = "closed"
+
+        def __init__(self):
+            self.seen = []
+
+        async def handle(self, context):
+            self.seen.append(context.point)
+            return HookOutcome()
+
+    hook = RecordingHook()
+    runner.hooks.register(hook)
+    run = runner.start(session.header.id, "读取 large.txt")
+    await run.task
+
+    assert run.status == RunStatus.COMPLETED
+    assert hook.seen == [
+        HookPoint.BEFORE_MODEL_REQUEST,
+        HookPoint.AFTER_TOOL_BATCH,
+        HookPoint.BEFORE_COMPACTION,
+        HookPoint.AFTER_COMPACTION,
+        HookPoint.BEFORE_MODEL_REQUEST,
+    ]
+    assert len([entry for entry in session.entries if entry.type == "context_checkpoint"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_auto_approve_asks_for_detected_delete_risk(tmp_path: Path):
     target = tmp_path / "remove.txt"
     target.write_text("temporary", encoding="utf-8")
     adapter = FakeModelAdapter(turns=[
@@ -148,14 +221,24 @@ async def test_auto_approve_allows_reviewable_delete_without_prompt(tmp_path: Pa
     ])
     runner, session = make_runner(tmp_path, adapter, LocalFileTools())
     await session.append("permission_mode", {"mode": PermissionMode.AUTO_APPROVE.value})
+    queue = runner.events.subscribe(session.header.id)
     run = runner.start(session.header.id, "删除临时文件")
+    while True:
+        event = await asyncio.wait_for(queue.get(), timeout=3)
+        if event.type == "approval_request":
+            runner.approvals.decide(
+                session.header.id, event.payload["approval_id"], "allow_once",
+                event.payload["policy"]["fingerprint"],
+            )
+            break
     await run.task
+    runner.events.unsubscribe(session.header.id, queue)
     assert run.status == RunStatus.COMPLETED
     assert not target.exists()
-    assert not any(entry.type == "approval_request" for entry in session.entries)
+    assert any(entry.type == "approval_request" for entry in session.entries)
     decision = next(entry for entry in session.entries if entry.type == "approval_decision")
-    assert decision.payload["automatic"] is True
-    assert decision.payload["permission_mode"] == "auto_approve"
+    assert decision.payload["decision"] == "allow_once"
+    assert not decision.payload.get("automatic")
 
 
 @pytest.mark.asyncio
@@ -176,6 +259,189 @@ async def test_auto_approve_cannot_override_core_path_denial(tmp_path: Path):
     assert not any(entry.type in {"approval_request", "approval_decision"} for entry in session.entries)
     result = next(entry for entry in session.entries if entry.type == "tool_result")
     assert result.payload["is_error"] is True
+
+
+@pytest.mark.asyncio
+async def test_full_access_agent_can_read_outside_project_without_approval(tmp_path: Path):
+    workspace = tmp_path / "repo"
+    workspace.mkdir()
+    outside = tmp_path / "outside.txt"
+    outside.write_text("outside content", encoding="utf-8")
+    adapter = FakeModelAdapter(turns=[
+        [ModelDelta(type="tool_call", tool_call=ToolCall(
+            call_id="read-1", name="read_file", arguments={"path": str(outside)},
+        )), ModelDelta(type="done")],
+        [ModelDelta(type="text_delta", text="done"), ModelDelta(type="done")],
+    ])
+    tools = ToolService(None, ArtifactStore(tmp_path / "artifacts"), tmp_path / "worker.py")
+    runner, session = make_runner(workspace, adapter, tools)
+    await session.append("permission_mode", {"mode": PermissionMode.FULL_ACCESS.value})
+    run = runner.start(session.header.id, "读取项目外的测试文件")
+    await run.task
+    assert run.status == RunStatus.COMPLETED
+    assert not any(entry.type == "approval_request" for entry in session.entries)
+    result = next(entry for entry in session.entries if entry.type == "tool_result")
+    assert result.payload["is_error"] is False
+    assert "outside content" in result.payload["output"]
+
+
+@pytest.mark.asyncio
+async def test_existing_file_error_is_returned_then_recovered_with_patch(tmp_path: Path):
+    target = tmp_path / "app.py"
+    target.write_text("value = 1\n", encoding="utf-8")
+
+    class RecoveryAdapter(FakeModelAdapter):
+        def __init__(self):
+            super().__init__(turns=[
+                [ModelDelta(type="tool_call", tool_call=ToolCall(
+                    call_id="create-existing", name="create_file",
+                    arguments={"path": "app.py", "content": "overwrite"},
+                )), ModelDelta(type="done")],
+                [ModelDelta(type="tool_call", tool_call=ToolCall(
+                    call_id="patch-existing", name="apply_patch",
+                    arguments={"path": "app.py", "old_text": "value = 1", "new_text": "value = 2"},
+                )), ModelDelta(type="done")],
+                [ModelDelta(type="text_delta", text="done"), ModelDelta(type="done")],
+            ])
+            self.requests = []
+
+        async def stream_turn(self, instructions, input_items, tools):
+            self.requests.append(input_items)
+            async for delta in super().stream_turn(instructions, input_items, tools):
+                yield delta
+
+    adapter = RecoveryAdapter()
+    worker = Path(__file__).resolve().parents[2] / "infra" / "runner" / "tool_worker.py"
+    tools = ToolService(None, ArtifactStore(tmp_path / "artifacts"), worker)
+    runner, session = make_runner(tmp_path, adapter, tools)
+    await session.append("permission_mode", {"mode": PermissionMode.FULL_ACCESS.value})
+    run = runner.start(session.header.id, "把 app.py 中的 value 改为 2")
+    await run.task
+    assert run.status == RunStatus.COMPLETED
+    assert target.read_text(encoding="utf-8") == "value = 2\n"
+    results = [entry.payload for entry in session.entries if entry.type == "tool_result"]
+    assert [item["is_error"] for item in results] == [True, False]
+    assert "read_file, then apply_patch" in results[0]["output"]
+    next_turn_results = [item for item in adapter.requests[1] if item.get("type") == "function_call_output"]
+    assert len(next_turn_results) == 1
+    assert next_turn_results[0]["call_id"] == "create-existing"
+    assert "No changes made" in next_turn_results[0]["output"]
+
+
+@pytest.mark.asyncio
+async def test_invalid_network_type_never_reaches_approval_or_execution(tmp_path: Path):
+    adapter = FakeModelAdapter(turns=[
+        [ModelDelta(type="tool_call", tool_call=ToolCall(
+            call_id="bad-network", name="run_command",
+            arguments={"command": "echo test", "network": "false"},
+        )), ModelDelta(type="done")],
+        [ModelDelta(type="text_delta", text="done"), ModelDelta(type="done")],
+    ])
+    sandbox = RecordedSandbox()
+    tools = ToolService(sandbox, ArtifactStore(tmp_path / "artifacts"), tmp_path / "worker.py")
+    runner, session = make_runner(tmp_path, adapter, tools)
+    run = runner.start(session.header.id, "检查工具参数")
+    await run.task
+    assert run.status == RunStatus.COMPLETED
+    assert sandbox.requests == []
+    assert not any(entry.type == "approval_request" for entry in session.entries)
+    result = next(entry for entry in session.entries if entry.type == "tool_result")
+    assert result.payload["is_error"] is True
+    assert "Invalid tool arguments" in result.payload["output"]
+
+
+@pytest.mark.asyncio
+async def test_auto_mode_allows_low_risk_network_in_sandbox(tmp_path: Path):
+    adapter = FakeModelAdapter(turns=[
+        [ModelDelta(type="tool_call", tool_call=ToolCall(
+            call_id="curl-1", name="run_command", arguments={"command": "curl https://example.com/status"},
+        )), ModelDelta(type="done")],
+        [ModelDelta(type="text_delta", text="done"), ModelDelta(type="done")],
+    ])
+    sandbox = RecordedSandbox()
+    tools = ToolService(sandbox, ArtifactStore(tmp_path / "artifacts"), tmp_path / "worker.py")
+    runner, session = make_runner(tmp_path, adapter, tools)
+    await session.append("permission_mode", {"mode": PermissionMode.AUTO_APPROVE.value})
+    run = runner.start(session.header.id, "读取公开状态")
+    await run.task
+    assert run.status == RunStatus.COMPLETED
+    assert not any(entry.type == "approval_request" for entry in session.entries)
+    assert len(sandbox.requests) == 1
+    assert sandbox.requests[0].network is True
+
+
+@pytest.mark.asyncio
+async def test_request_mode_asks_for_every_network_call_even_after_session_grant(tmp_path: Path):
+    adapter = FakeModelAdapter(turns=[
+        [ModelDelta(type="tool_call", tool_call=ToolCall(
+            call_id="curl-1", name="run_command", arguments={"command": "curl https://example.com/one"},
+        )), ModelDelta(type="done")],
+        [ModelDelta(type="tool_call", tool_call=ToolCall(
+            call_id="curl-2", name="run_command", arguments={"command": "curl https://example.com/two"},
+        )), ModelDelta(type="done")],
+        [ModelDelta(type="text_delta", text="done"), ModelDelta(type="done")],
+    ])
+    sandbox = RecordedSandbox()
+    tools = ToolService(sandbox, ArtifactStore(tmp_path / "artifacts"), tmp_path / "worker.py")
+    runner, session = make_runner(tmp_path, adapter, tools)
+    queue = runner.events.subscribe(session.header.id)
+    run = runner.start(session.header.id, "读取两个公开地址")
+    approvals = 0
+    while approvals < 2:
+        event = await asyncio.wait_for(queue.get(), timeout=3)
+        if event.type == "approval_request":
+            approvals += 1
+            runner.approvals.decide(
+                session.header.id, event.payload["approval_id"], "allow_session",
+                event.payload["policy"]["fingerprint"],
+            )
+    await run.task
+    runner.events.unsubscribe(session.header.id, queue)
+    assert run.status == RunStatus.COMPLETED
+    assert len(sandbox.requests) == 2
+    assert all(request.network for request in sandbox.requests)
+
+
+@pytest.mark.asyncio
+async def test_request_mode_approved_external_file_edit_uses_scoped_host_worker(tmp_path: Path):
+    workspace = tmp_path / "repo"
+    workspace.mkdir()
+    target = tmp_path / "outside.txt"
+    second = tmp_path / "second-outside.txt"
+    adapter = FakeModelAdapter(turns=[
+        [ModelDelta(type="tool_call", tool_call=ToolCall(
+            call_id="create-outside", name="create_file",
+            arguments={"path": str(target), "content": "approved outside"},
+        )), ModelDelta(type="done")],
+        [ModelDelta(type="tool_call", tool_call=ToolCall(
+            call_id="create-second-outside", name="create_file",
+            arguments={"path": str(second), "content": "approved again"},
+        )), ModelDelta(type="done")],
+        [ModelDelta(type="text_delta", text="done"), ModelDelta(type="done")],
+    ])
+    worker = Path(__file__).resolve().parents[2] / "infra" / "runner" / "tool_worker.py"
+    tools = ToolService(RecordedSandbox(), ArtifactStore(tmp_path / "artifacts"), worker)
+    runner, session = make_runner(workspace, adapter, tools)
+    queue = runner.events.subscribe(session.header.id)
+    run = runner.start(session.header.id, "创建项目外测试文件")
+    approvals = 0
+    while approvals < 2:
+        event = await asyncio.wait_for(queue.get(), timeout=3)
+        if event.type == "approval_request":
+            approvals += 1
+            assert "external_file_write" in event.payload["policy"]["capabilities"]
+            runner.approvals.decide(
+                session.header.id, event.payload["approval_id"], "allow_session",
+                event.payload["policy"]["fingerprint"],
+            )
+    await run.task
+    runner.events.unsubscribe(session.header.id, queue)
+    assert run.status == RunStatus.COMPLETED
+    assert target.read_text(encoding="utf-8") == "approved outside"
+    assert second.read_text(encoding="utf-8") == "approved again"
+    started = [entry for entry in session.entries if entry.type == "sandbox_start"]
+    assert [entry.payload["backend"] for entry in started] == ["host", "host"]
+    assert [entry.payload["external_file_scope"] for entry in started] == [[str(target)], [str(second)]]
 
 
 @pytest.mark.asyncio
@@ -354,6 +620,174 @@ async def test_read_only_tool_calls_execute_concurrently_and_persist_in_order(tm
     assert session.validate_tool_pairs() == []
     assert run.status.value == "completed"
     assert any(entry.type == "assistant_message" and entry.payload["content"] == "done" for entry in session.entries)
+
+
+@pytest.mark.asyncio
+async def test_running_messages_steer_after_batch_and_follow_up_in_new_run(tmp_path: Path):
+    (tmp_path / "a.py").write_text("pass\n", encoding="utf-8")
+    class BlockingReadTools(ParallelReadTools):
+        def __init__(self):
+            super().__init__()
+            self.started = asyncio.Event()
+            self.release = asyncio.Event()
+
+        async def execute(self, session_id, workspace, tool_name, arguments):
+            self.started.set()
+            await self.release.wait()
+            return ToolExecutionResult(output="read complete")
+
+    class CapturingAdapter(FakeModelAdapter):
+        def __init__(self):
+            super().__init__(turns=[
+                [ModelDelta(type="tool_call", tool_call=ToolCall(
+                    call_id="read-1", name="read_file", arguments={"path": "a.py"},
+                )), ModelDelta(type="done")],
+                [ModelDelta(type="text_delta", text="first run complete"), ModelDelta(type="done")],
+                [ModelDelta(type="text_delta", text="follow-up complete"), ModelDelta(type="done")],
+            ])
+            self.requests = []
+
+        async def stream_turn(self, instructions, input_items, tools):
+            self.requests.append(input_items)
+            async for delta in super().stream_turn(instructions, input_items, tools):
+                yield delta
+
+    adapter = CapturingAdapter()
+    tools = BlockingReadTools()
+    runner, session = make_runner(tmp_path, adapter, tools)
+    first = runner.start(session.header.id, "检查项目")
+    await asyncio.wait_for(tools.started.wait(), 2)
+    steer = await runner.queue_message(session.header.id, first.id, "请同时检查类型", "after_tool_batch")
+    follow = await runner.queue_message(session.header.id, first.id, "完成后给我总结", "after_run")
+    assert [entry.id for entry in runner.pending_messages(session)] == [steer.id, follow.id]
+    tools.release.set()
+    await asyncio.wait_for(first.task, 2)
+    for _ in range(100):
+        next_run = next((item for item in runner.runs.values() if item.id != first.id), None)
+        if next_run:
+            await asyncio.wait_for(next_run.task, 2)
+            break
+        await asyncio.sleep(0.01)
+    else:
+        pytest.fail("follow-up run did not start")
+    assert first.status == RunStatus.COMPLETED
+    assert next_run.status == RunStatus.COMPLETED
+    assert runner.pending_messages(session) == []
+    assert len(adapter.requests) == 3
+    assert "请同时检查类型" not in str(adapter.requests[0])
+    assert "请同时检查类型" in str(adapter.requests[1])
+    assert "完成后给我总结" not in str(adapter.requests[1])
+    assert "完成后给我总结" in str(adapter.requests[2])
+    delivered = [entry.payload["queued_message_id"] for entry in session.entries
+                 if entry.type == "user_message" and entry.payload.get("queued_message_id")]
+    assert delivered == [steer.id, follow.id]
+    assert session.validate_tool_pairs() == []
+
+
+@pytest.mark.asyncio
+async def test_queued_message_can_be_cancelled_and_survives_reload(tmp_path: Path):
+    (tmp_path / "a.py").write_text("pass\n", encoding="utf-8")
+    adapter = FakeModelAdapter(turns=[
+        [ModelDelta(type="tool_call", tool_call=ToolCall(
+            call_id="read-1", name="read_file", arguments={"path": "a.py"},
+        )), ModelDelta(type="done")],
+        [ModelDelta(type="text_delta", text="done"), ModelDelta(type="done")],
+    ])
+
+    class WaitingTools(ParallelReadTools):
+        def __init__(self):
+            super().__init__()
+            self.started = asyncio.Event()
+            self.release = asyncio.Event()
+
+        async def execute(self, session_id, workspace, tool_name, arguments):
+            self.started.set()
+            await self.release.wait()
+            return ToolExecutionResult(output="done")
+
+    tools = WaitingTools()
+    runner, session = make_runner(tmp_path, adapter, tools)
+    run = runner.start(session.header.id, "读取")
+    await asyncio.wait_for(tools.started.wait(), 2)
+    queued = await runner.queue_message(session.header.id, run.id, "稍后执行", "after_run")
+    reloaded = SessionStore(tmp_path / "sessions").get(session.header.id)
+    assert [entry.id for entry in runner.pending_messages(reloaded)] == [queued.id]
+    await runner.cancel_queued_message(session.header.id, queued.id)
+    tools.release.set()
+    await run.task
+    await asyncio.sleep(0)
+    assert runner.pending_messages(session) == []
+    assert not any(entry.type == "user_message" and entry.payload.get("queued_message_id") == queued.id
+                   for entry in session.entries)
+
+
+@pytest.mark.asyncio
+async def test_steering_waits_when_tool_round_limit_prevents_next_model_request(tmp_path: Path):
+    (tmp_path / "a.py").write_text("pass\n", encoding="utf-8")
+    adapter = FakeModelAdapter(turns=[
+        [ModelDelta(type="tool_call", tool_call=ToolCall(
+            call_id="read-1", name="read_file", arguments={"path": "a.py"},
+        )), ModelDelta(type="done")],
+    ])
+
+    class WaitingTools(ParallelReadTools):
+        def __init__(self):
+            super().__init__()
+            self.started = asyncio.Event()
+            self.release = asyncio.Event()
+
+        async def execute(self, session_id, workspace, tool_name, arguments):
+            self.started.set()
+            await self.release.wait()
+            return ToolExecutionResult(output="done")
+
+    tools = WaitingTools()
+    runner, session = make_runner(tmp_path, adapter, tools)
+    runner.max_rounds = 1
+    run = runner.start(session.header.id, "读取")
+    await asyncio.wait_for(tools.started.wait(), 2)
+    queued = await runner.queue_message(session.header.id, run.id, "补充检查", "after_tool_batch")
+    tools.release.set()
+    await run.task
+    assert run.status == RunStatus.COMPLETED
+    assert [entry.id for entry in runner.pending_messages(session)] == [queued.id]
+    assert not any(entry.type == "user_message" and entry.payload.get("queued_message_id") == queued.id
+                   for entry in session.entries)
+
+
+@pytest.mark.asyncio
+async def test_steering_during_text_response_gets_another_model_turn(tmp_path: Path):
+    class PausingAdapter(FakeModelAdapter):
+        def __init__(self):
+            super().__init__(turns=[
+                [ModelDelta(type="text_delta", text="initial"), ModelDelta(type="done")],
+                [ModelDelta(type="text_delta", text="revised"), ModelDelta(type="done")],
+            ])
+            self.started = asyncio.Event()
+            self.release = asyncio.Event()
+            self.requests = []
+
+        async def stream_turn(self, instructions, input_items, tools):
+            self.requests.append(input_items)
+            if len(self.requests) == 1:
+                self.started.set()
+                await self.release.wait()
+            async for delta in super().stream_turn(instructions, input_items, tools):
+                yield delta
+
+    adapter = PausingAdapter()
+    runner, session = make_runner(tmp_path, adapter, ParallelReadTools())
+    run = runner.start(session.header.id, "先回答")
+    await asyncio.wait_for(adapter.started.wait(), 2)
+    queued = await runner.queue_message(session.header.id, run.id, "再考虑边界情况", "after_tool_batch")
+    adapter.release.set()
+    await asyncio.wait_for(run.task, 2)
+    assert run.status == RunStatus.COMPLETED
+    assert len(adapter.requests) == 2
+    assert "再考虑边界情况" in str(adapter.requests[1])
+    assert runner.pending_messages(session) == []
+    assert sum(entry.payload.get("queued_message_id") == queued.id for entry in session.entries
+               if entry.type == "user_message") == 1
 
 
 @pytest.mark.asyncio

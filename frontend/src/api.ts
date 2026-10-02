@@ -29,9 +29,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  subagent: (sessionId: string, childId: string) =>
+    request<import("./types").SubAgentDetail>(`/sessions/${encodeURIComponent(sessionId)}/subagents/${encodeURIComponent(childId)}`),
   health: () => request<any>("/health"),
   modelSettings: () => request<ModelSettings>("/model-settings"),
-  updateModelSettings: (settings: { api_key?: string; model: string; base_url: string; brief_model: string | null; fallback_model: string | null }) =>
+  updateModelSettings: (settings: { api_key?: string; model: string; base_url: string; brief_model: string | null; fallback_model: string | null; context_window: number; fallback_context_window: number | null }) =>
     request<ModelSettings>("/model-settings", {
       method: "PUT",
       headers: { "X-TraceForge-UI": "1" },
@@ -81,6 +83,14 @@ export const api = {
   tree: (sessionId: string) => request<any[]>(`/sessions/${sessionId}/tree`),
   run: (sessionId: string, content: string) =>
     request<any>(`/sessions/${sessionId}/runs`, { method: "POST", body: JSON.stringify({ content }) }),
+  queueMessage: (sessionId: string, runId: string, content: string, timing: "after_tool_batch" | "after_run") =>
+    request<{ id: string; status: string }>(`/sessions/${sessionId}/queued-messages`, {
+      method: "POST", body: JSON.stringify({ run_id: runId, content, timing }),
+    }),
+  startQueuedMessage: (sessionId: string, messageId: string) =>
+    request<{ run_id: string; status: string }>(`/sessions/${sessionId}/queued-messages/${messageId}/start`, { method: "POST" }),
+  cancelQueuedMessage: (sessionId: string, messageId: string) =>
+    request<{ id: string; status: string }>(`/sessions/${sessionId}/queued-messages/${messageId}`, { method: "DELETE" }),
   cancel: (runId: string) => request<any>(`/runs/${runId}/cancel`, { method: "POST" }),
   approve: (approvalId: string, sessionId: string, decision: string, fingerprint: string) =>
     request<any>(`/approvals/${approvalId}/decision`, {

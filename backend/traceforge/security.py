@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from .models import PolicyResult, RiskLevel
+from .models import PermissionMode, PolicyResult, RiskLevel
 from .tool_plugins import ToolPluginRegistry
 
 
@@ -20,7 +20,7 @@ class PathGuard:
     def __init__(self, workspace: str | Path) -> None:
         self.workspace = Path(workspace).resolve(strict=True)
 
-    def resolve(self, raw: str, *, allow_missing: bool = False) -> Path:
+    def _resolve_candidate(self, raw: str, *, allow_missing: bool = False) -> Path:
         candidate = Path(raw)
         if not candidate.is_absolute():
             candidate = self.workspace / candidate
@@ -35,10 +35,24 @@ class PathGuard:
                 resolved /= part
         else:
             resolved = candidate.resolve(strict=True)
+        return resolved
+
+    def resolve_external(self, raw: str, *, allow_missing: bool = False) -> Path:
+        """Resolve an explicit external file target, retaining the credential guard."""
+        resolved = self._resolve_candidate(raw, allow_missing=allow_missing)
+        if any(part.lower() in self.SENSITIVE_PARTS for part in resolved.parts):
+            raise PermissionError(f"Sensitive path is blocked: {raw}")
+        if resolved.name.lower() in self.SENSITIVE_FILES or resolved.suffix.lower() in {".pem", ".p12", ".pfx"}:
+            raise PermissionError(f"Sensitive file is blocked: {raw}")
+        return resolved
+
+    def resolve(self, raw: str, *, allow_missing: bool = False) -> Path:
+        resolved = self._resolve_candidate(raw, allow_missing=allow_missing)
         try:
             relative = resolved.relative_to(self.workspace)
         except ValueError as exc:
             raise PermissionError(f"Path escapes workspace: {raw}") from exc
+
         if any(part.lower() in self.SENSITIVE_PARTS for part in relative.parts):
             raise PermissionError(f"Sensitive path is blocked: {raw}")
         if relative.name.lower() in self.SENSITIVE_FILES or relative.suffix.lower() in {".pem", ".p12", ".pfx"}:
@@ -47,7 +61,7 @@ class PathGuard:
 
 
 class PolicyEngine:
-    version = "2026-09-v1"
+    version = "2026-09-v2"
     DENY_COMMANDS = re.compile(r"(^|[;&|]\s*)(sudo|su|mount|umount|docker|podman|nsenter)\b", re.I)
     DESTRUCTIVE = re.compile(
         r"\b(rm\s+(-[^\s]*r[^\s]*f|--recursive)|git\s+(reset\s+--hard|clean\s+-|push)|chmod|chown|del\s+/[sq])\b",
@@ -55,6 +69,10 @@ class PolicyEngine:
     )
     INSTALLERS = re.compile(r"\b(pip|pip3|npm|pnpm|yarn|bun|apt|apt-get|dnf|yum|cargo)\s+(install|add|update)\b", re.I)
     NETWORK = re.compile(r"\b(curl|wget|Invoke-WebRequest|git\s+(clone|fetch|pull|push))\b", re.I)
+    NETWORK_RISK = re.compile(
+        r"\bgit\s+(clone|push)\b|\bcurl\b[^\n]*(--data(?:-binary)?|--upload-file|-[dFT]\b|-X\s*(POST|PUT|PATCH|DELETE))|\bInvoke-RestMethod\b",
+        re.I,
+    )
     GIT_REVIEW = re.compile(r"\bgit\s+(commit|push|tag)\b", re.I)
     CREDENTIALS = re.compile(
         r"(~[/\\])?\.(ssh|aws|azure|gnupg|kube)|credentials|id_rsa|id_ed25519|"
@@ -66,7 +84,10 @@ class PolicyEngine:
     def __init__(self, plugins: ToolPluginRegistry | None = None) -> None:
         self.plugins = plugins
 
-    def evaluate(self, tool_name: str, arguments: dict[str, Any], workspace: str) -> PolicyResult:
+    def evaluate(
+        self, tool_name: str, arguments: dict[str, Any], workspace: str,
+        mode: PermissionMode = PermissionMode.REQUEST_APPROVAL,
+    ) -> PolicyResult:
         capabilities: set[str] = set()
         reasons: list[str] = []
         affected: list[str] = []
@@ -95,11 +116,34 @@ class PolicyEngine:
                     or (tool_name == "move_file" and key == "destination_path"),
                 )
                 affected.append(str(resolved))
-            except (PermissionError, FileNotFoundError) as exc:
+            except PermissionError as exc:
+                if str(exc).startswith("Path escapes workspace:") and tool_name in {
+                    "apply_patch", "create_file", "delete_file", "move_file",
+                }:
+                    try:
+                        resolved = guard.resolve_external(
+                            raw,
+                            allow_missing=(tool_name in {"apply_patch", "create_file"} and key == "path")
+                            or (tool_name == "move_file" and key == "destination_path"),
+                        )
+                    except (PermissionError, FileNotFoundError) as blocked:
+                        capabilities.add("sensitive_path")
+                        escalate(RiskLevel.DENY, str(blocked))
+                    else:
+                        affected.append(str(resolved))
+                        capabilities.add("external_file_write")
+                        escalate(RiskLevel.ASK, "Editing outside the project requires approval")
+                    continue
                 capabilities.add("workspace_escape")
                 escalate(RiskLevel.DENY, str(exc))
+            except FileNotFoundError as exc:
+                capabilities.add("missing_path")
+                escalate(RiskLevel.DENY, str(exc))
 
-        if tool_name in {"list_files", "search_code", "read_file", "git_status", "git_diff", "read_skill"}:
+        if tool_name == "delegate_task":
+            capabilities.add("subagent_read_only")
+        elif tool_name in {"list_files", "search_code", "read_file", "git_status", "git_diff", "read_skill",
+                         "search_history", "read_history_entry", "read_project_handoff"}:
             capabilities.add("filesystem_read")
         elif tool_name in {"apply_patch", "create_file"}:
             capabilities.add("filesystem_write")
@@ -130,7 +174,10 @@ class PolicyEngine:
                 escalate(RiskLevel.ASK, "Dependency installation requires approval")
             if self.NETWORK.search(command) or bool(arguments.get("network")) or bool(plugin and plugin.network):
                 capabilities.add("network_access")
-                escalate(RiskLevel.ASK, "Network access requires approval")
+                if mode == PermissionMode.REQUEST_APPROVAL:
+                    escalate(RiskLevel.ASK, "Network access always requires approval in request mode")
+                elif self.NETWORK_RISK.search(command):
+                    escalate(RiskLevel.ASK, "Network operation has detected risk")
             if self.COMPOUND.search(command):
                 capabilities.add("compound_shell")
                 escalate(RiskLevel.ASK, "Compound shell command requires review")
@@ -138,7 +185,7 @@ class PolicyEngine:
             escalate(RiskLevel.DENY, f"Unknown tool: {tool_name}")
 
         if not reasons:
-            reasons.append("Operation is within the workspace and matches the default low-risk policy")
+            reasons.append("Operation matches the low-risk policy for this permission mode")
         fingerprint = hashlib.sha256(
             json.dumps(
                 {"tool": tool_name, "capabilities": sorted(capabilities),

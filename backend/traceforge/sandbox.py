@@ -103,9 +103,20 @@ class DockerSandbox:
             "--network",
             "bridge" if request.network else "none",
             "--mount",
-            f"type=bind,source={Path(request.workspace).resolve()},target=/workspace",
+            f"type=bind,source={Path(request.workspace).resolve()},target=/workspace"
+            + (",readonly" if request.workspace_read_only else ""),
         ]
-        for key, value in request.env.items():
+        # Trust only this mounted repository, on every fresh container. Do not
+        # persist host Git configuration or disable the ownership check globally.
+        execution_env = {
+            **request.env,
+            "GIT_CONFIG_COUNT": "2",
+            "GIT_CONFIG_KEY_0": "safe.directory",
+            "GIT_CONFIG_VALUE_0": "",
+            "GIT_CONFIG_KEY_1": "safe.directory",
+            "GIT_CONFIG_VALUE_1": "/workspace",
+        }
+        for key, value in execution_env.items():
             args.extend(["--env", f"{key}={value}"])
         args.extend([self.image, "bash", "-lc", request.command])
         process = await asyncio.create_subprocess_exec(
@@ -142,7 +153,9 @@ class DockerSandbox:
             profile={
                 "network": request.network,
                 "workspace_mount": "/workspace",
+                "git_safe_directory": "/workspace",
                 "read_only_root": True,
+                "workspace_read_only": request.workspace_read_only,
                 "capabilities": "dropped-all",
                 "memory": "1g",
                 "cpus": 2,
@@ -198,7 +211,7 @@ class BubblewrapSandbox:
             "--ro-bind",
             "/",
             "/",
-            "--bind",
+            "--ro-bind" if request.workspace_read_only else "--bind",
             workspace,
             "/workspace",
             "--tmpfs",
@@ -212,6 +225,19 @@ class BubblewrapSandbox:
             "--chdir",
             "/workspace",
         ]
+        if request.workspace_read_only:
+            # Restricted readers do not need the host home, credentials or Git
+            # metadata. Mount only the system runtime and the sanitized snapshot.
+            args = ["bwrap", "--die-with-parent", "--new-session", "--unshare-all"]
+            for runtime in ("/usr", "/bin", "/lib", "/lib64"):
+                if Path(runtime).exists():
+                    args.extend(["--ro-bind", runtime, runtime])
+            args.extend(["--dir", "/etc"])
+            if Path("/etc/ld.so.cache").is_file():
+                args.extend(["--ro-bind", "/etc/ld.so.cache", "/etc/ld.so.cache"])
+            args.extend(["--ro-bind", workspace, "/workspace", "--tmpfs", "/tmp",
+                         "--dir", "/tmp/home", "--proc", "/proc", "--dev", "/dev",
+                         "--chdir", "/workspace"])
         if request.network:
             args.append("--share-net")
         limited_command = (
@@ -257,6 +283,7 @@ class BubblewrapSandbox:
                 "network": request.network,
                 "workspace_mount": "/workspace",
                 "read_only_root": True,
+                "workspace_read_only": request.workspace_read_only,
                 "namespaces": ["mount", "pid", "ipc", "uts", "network"],
             },
         )

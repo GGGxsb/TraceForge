@@ -88,6 +88,33 @@ async def test_archive_restore_and_delete_session_with_artifacts(tmp_path: Path)
 
 
 @pytest.mark.asyncio
+async def test_compaction_handoff_is_shared_and_survives_session_deletion(tmp_path: Path):
+    app = create_app(replace(Settings.from_env(), data_dir=tmp_path / "data", model_config_dir=tmp_path / "config"))
+    services = app.state.services
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    session = services.sessions.create(services.workspaces.register(str(repo)))
+    await session.append("user_message", {"content": "旧需求 " * 300})
+    await session.append("assistant_message", {"content": "旧工作 " * 300})
+    await session.append("user_message", {"content": "继续"})
+    await session.append("assistant_message", {"content": "进行中"})
+    services.model_settings.adapter.replace(FakeModelAdapter())
+    compacted = await services.runner.compactor.compact(session)
+    assert compacted is not None
+    handoff_path = session.path.parent.parent / compacted.payload["handoff_file"]
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        download = await client.get(f"/api/sessions/{session.header.id}/handoffs/{compacted.id}")
+        assert download.status_code == 200
+        assert "TraceForge 项目交接" in download.text
+        assert (await client.get(f"/api/workspaces/{session.header.workspace_id}/handoff")).status_code == 200
+        assert (await client.get(f"/api/sessions/{session.header.id}/handoffs/missing")).status_code == 404
+        assert (await client.delete(f"/api/sessions/{session.header.id}")).status_code == 200
+    assert handoff_path.exists()
+
+
+@pytest.mark.asyncio
 async def test_active_session_cannot_be_archived_or_deleted(tmp_path: Path):
     app = create_app(replace(Settings.from_env(), data_dir=tmp_path / "data", model_config_dir=tmp_path / "config"))
     services = app.state.services
@@ -107,6 +134,39 @@ async def test_active_session_cannot_be_archived_or_deleted(tmp_path: Path):
             assert (await client.delete(f"/api/sessions/{session.header.id}")).status_code == 409
         assert session.path.exists()
         assert session.archived is False
+    finally:
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+
+@pytest.mark.asyncio
+async def test_running_message_api_persists_and_cancels_queue(tmp_path: Path):
+    app = create_app(replace(Settings.from_env(), data_dir=tmp_path / "data", model_config_dir=tmp_path / "config"))
+    services = app.state.services
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    session = services.sessions.create(services.workspaces.register(str(repo)))
+    task = asyncio.create_task(asyncio.Event().wait())
+    services.runner.runs["active"] = ActiveRun(
+        id="active", session_id=session.header.id, status=RunStatus.EXECUTING,
+        task=task, state={"queue_chain_root": "active"},
+    )
+    try:
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            url = f"/api/sessions/{session.header.id}/queued-messages"
+            assert (await client.post(url, json={
+                "run_id": "wrong", "content": "继续", "timing": "after_run",
+            })).status_code == 409
+            response = await client.post(url, json={
+                "run_id": "active", "content": "继续", "timing": "after_run",
+            })
+            assert response.status_code == 200
+            message_id = response.json()["id"]
+            assert services.runner.pending_messages(session)[0].id == message_id
+            assert (await client.delete(f"{url}/{message_id}")).status_code == 200
+            assert services.runner.pending_messages(session) == []
     finally:
         task.cancel()
         with pytest.raises(asyncio.CancelledError):

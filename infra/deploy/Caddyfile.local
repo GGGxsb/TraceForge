@@ -1,0 +1,8 @@
+{
+    # The application shares the network namespace; do not expose an admin API.
+    admin off
+}
+
+http://:8000 {
+    reverse_proxy 127.0.0.1:8001
+}

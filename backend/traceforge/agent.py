@@ -26,7 +26,7 @@ from .models import (
 )
 from .security import PolicyEngine, RISK_ORDER
 from .storage import EventHub, JsonlSession, SessionStore
-from .tools import READ_ONLY_TOOLS, ToolService
+from .tools import READ_ONLY_TOOLS, ToolService, validate_tool_arguments
 from .skills import SkillCatalog
 
 
@@ -136,6 +136,7 @@ class AgentRunner:
         protected_paths: tuple[Path, ...] = (),
         skills: SkillCatalog | None = None,
         checkpoints: CheckpointStore | None = None,
+        subagents: Any | None = None,
     ) -> None:
         if max_run_cost_usd > 0 and input_price_per_million <= 0 and output_price_per_million <= 0:
             raise ValueError("Cost budget requires TRACEFORGE_INPUT_USD_PER_1M or TRACEFORGE_OUTPUT_USD_PER_1M")
@@ -157,7 +158,24 @@ class AgentRunner:
         self.protected_paths = tuple(path.resolve() for path in protected_paths)
         self.skills = skills
         self.checkpoints = checkpoints
+        self.subagents = subagents
+        if subagents is not None:
+            self.tools.subagents_enabled = True
         self.runs: dict[str, ActiveRun] = {}
+        self._base_reserve_tokens = compactor.reserve_tokens
+        self._base_keep_recent_tokens = compactor.keep_recent_tokens
+
+    def configure_context_window(self, context_window: int) -> None:
+        """Apply the currently configured model limit to both projection and compaction."""
+        if context_window < 1024:
+            raise ValueError("Model context window must be at least 1024 tokens")
+        reserve = min(self._base_reserve_tokens, max(256, context_window // 4))
+        recent = min(self._base_keep_recent_tokens, max(256, (context_window - reserve) // 2))
+        self.projector.context_window = context_window
+        self.projector.reserve_tokens = reserve
+        self.compactor.context_window = context_window
+        self.compactor.reserve_tokens = reserve
+        self.compactor.keep_recent_tokens = recent
 
     def start(
         self,
@@ -167,6 +185,8 @@ class AgentRunner:
         brief_text: str | None = None,
         resume_from_entry_id: str | None = None,
         request_source_id: str | None = None,
+        queue_chain_root: str | None = None,
+        queued_message_id: str | None = None,
     ) -> ActiveRun:
         workspace = Path(self.sessions.get(session_id).workspace).resolve()
         if any(path.is_relative_to(workspace) for path in self.protected_paths):
@@ -188,6 +208,8 @@ class AgentRunner:
                 "brief_user_text": brief_text or content,
                 "resume_from_entry_id": resume_from_entry_id,
                 "request_source_id": request_source_id,
+                "queue_chain_root": queue_chain_root,
+                "queued_message_id": queued_message_id,
                 "workspace": str(workspace),
                 "skill_command": skill_command,
                 "started_monotonic": time.monotonic(),
@@ -218,9 +240,86 @@ class AgentRunner:
         token = usage_sink.set(persist_usage)
         try:
             run.task = asyncio.create_task(self._run(run, content), name=run.id)
+            run.state["queue_chain_root"] = queue_chain_root or run.id
+            run.task.add_done_callback(lambda _: asyncio.create_task(self._continue_queued(run)))
         finally:
             usage_sink.reset(token)
         return run
+
+    @staticmethod
+    def pending_messages(session: JsonlSession) -> list[SessionEntry]:
+        branch = session.get_branch()
+        delivered = {
+            str(entry.payload.get("queued_message_id")) for entry in branch
+            if entry.type in {"user_message", "queued_message_cancel"}
+            and entry.payload.get("queued_message_id")
+        }
+        return [entry for entry in branch if entry.type == "queued_message" and entry.id not in delivered]
+
+    async def queue_message(self, session_id: str, run_id: str, content: str, timing: str) -> SessionEntry:
+        if timing not in {"after_tool_batch", "after_run"} or not content.strip():
+            raise ValueError("Invalid queued message")
+        run = self.active_for_session(session_id)
+        if not run or run.id != run_id or run.status in {RunStatus.COMPLETED, RunStatus.FAILED, RunStatus.CANCELLED}:
+            raise RuntimeError("目标运行已结束，请直接发送消息")
+        session = self.sessions.get(session_id)
+        return await self._append(session, "queued_message", {
+            "content": content.strip(), "timing": timing,
+            "target_run_id": run_id, "queue_chain_root": run.state["queue_chain_root"],
+        }, run_id)
+
+    async def cancel_queued_message(self, session_id: str, message_id: str) -> None:
+        session = self.sessions.get(session_id)
+        message = next((entry for entry in self.pending_messages(session) if entry.id == message_id), None)
+        if message is None:
+            raise KeyError("Queued message is no longer pending")
+        await self._append(session, "queued_message_cancel", {"queued_message_id": message_id}, message.run_id or "")
+
+    async def _deliver_steering(self, run: ActiveRun, session: JsonlSession,
+                                evidence: list[dict[str, Any]], brief_text: str) -> str | None:
+        pending = [entry for entry in self.pending_messages(session)
+                   if entry.payload.get("timing") == "after_tool_batch"
+                   and entry.payload.get("target_run_id") == run.id]
+        if not pending:
+            return None
+        combined: list[str] = []
+        for entry in pending:
+            content = str(entry.payload["content"])
+            delivered = await self._append(session, "user_message", {
+                "content": content, "queued_message_id": entry.id, "delivery": "after_tool_batch",
+            }, run.id)
+            run.state["latest_user_entry_id"] = delivered.id
+            combined.append(content)
+        text = brief_text + "\n后续补充指令：\n" + "\n".join(combined)
+        await self._dispatch_hooks(run, session, HookPoint.USER_MESSAGE_COMMITTED, user_text=text, evidence=evidence)
+        return text
+
+    async def _continue_queued(self, finished: ActiveRun) -> None:
+        if finished.status != RunStatus.COMPLETED or finished.state.get("terminal_outcome"):
+            return
+        session = self.sessions.get(finished.session_id)
+        if session.archived or self.active_for_session(finished.session_id):
+            return
+        if any(run.task and not run.task.done()
+               and self.sessions.get(run.session_id).header.workspace_id == session.header.workspace_id
+               for run in self.runs.values()):
+            return
+        pending = [entry for entry in self.pending_messages(session)
+                   if entry.payload.get("queue_chain_root") == finished.state["queue_chain_root"]]
+        if not pending:
+            return
+        # A steering message that arrived after the last safe boundary becomes
+        # the next run. Each remaining follow-up gets its own run in order.
+        entry = pending[0]
+        try:
+            content = str(entry.payload["content"])
+            self.start(session.header.id, content,
+                       queue_chain_root=finished.state["queue_chain_root"],
+                       queued_message_id=entry.id)
+        except Exception as exc:  # preserve queued work for visible recovery
+            await self._append(session, "hook_state", {
+                "point": "queued_message", "error": f"{type(exc).__name__}: {exc}",
+            }, finished.id)
 
     def active_for_session(self, session_id: str) -> ActiveRun | None:
         return next(
@@ -280,6 +379,8 @@ class AgentRunner:
                 "estimated_cost_usd": run.state.get("estimated_cost_usd"),
             })
         run.status = status
+        if status in {RunStatus.COMPLETED, RunStatus.FAILED, RunStatus.CANCELLED}:
+            run.state["terminal_outcome"] = extra.get("outcome")
         await self._append(session, "run_state", {"status": status.value, **extra}, run.id)
 
     async def _request_clarification(
@@ -389,7 +490,11 @@ class AgentRunner:
             await self._set_status(run, session, RunStatus.BRIEFING)
             resume_id = run.state.get("resume_from_entry_id")
             user_entry = session.by_id[resume_id] if resume_id else await self._append(
-                session, "user_message", {"content": content}, run.id
+                session, "user_message", {
+                    "content": content,
+                    **({"queued_message_id": run.state["queued_message_id"], "delivery": "after_run"}
+                       if run.state.get("queued_message_id") else {}),
+                }, run.id
             )
             skill_command = run.state.get("skill_command")
             if skill_command and self.skills:
@@ -573,6 +678,17 @@ class AgentRunner:
                     raise HookPaused("after_model_response")
 
                 if not tool_calls:
+                    can_continue = (
+                        round_index + 1 < self.max_rounds
+                        and (not self.max_run_tokens or run.state["usage"]["total_tokens"] < self.max_run_tokens)
+                        and (not self.max_run_cost_usd or float(run.state.get("estimated_cost_usd", 0)) < self.max_run_cost_usd)
+                    )
+                    steering = (await self._deliver_steering(run, session, evidence, brief_text)
+                                if can_continue else None)
+                    if steering:
+                        brief_text = steering
+                        source_message_id = str(run.state["latest_user_entry_id"])
+                        continue
                     if phase == RunStatus.DISCOVERING:
                         if text:
                             await self.events.publish(
@@ -696,6 +812,22 @@ class AgentRunner:
                     raise RuntimeError("A before_next_model_request hook aborted the run")
                 if next_result.action == "pause":
                     raise HookPaused("before_next_model_request")
+                has_next_round = round_index + 1 < self.max_rounds
+                has_token_budget = not self.max_run_tokens or run.state["usage"]["total_tokens"] < self.max_run_tokens
+                has_cost_budget = not self.max_run_cost_usd or float(run.state.get("estimated_cost_usd", 0)) < self.max_run_cost_usd
+                if has_next_round and has_token_budget and has_cost_budget:
+                    steering = await self._deliver_steering(run, session, evidence, brief_text)
+                    if steering:
+                        brief_text = steering
+                        source_message_id = str(run.state["latest_user_entry_id"])
+                    # The entire tool batch is persisted here. Compact before
+                    # the next model request when this run approaches its
+                    # context limit, without splitting a call from its result.
+                    after_batch = self.projector.project(session, sections)
+                    if self.compactor.should_compact(after_batch):
+                        await self._compact_context(
+                            run, session, brief_text, evidence, sections,
+                        )
 
             await self._append(
                 session,
@@ -850,6 +982,13 @@ class AgentRunner:
                 ),
                 "Tool not available",
             )
+        definition = next((tool for tool in self.tools.definitions() if tool["name"] == call.name), None)
+        if definition is None:
+            return ToolExecutionResult(output=f"Unknown tool: {call.name}", is_error=True)
+        try:
+            call = call.model_copy(update={"arguments": validate_tool_arguments(definition, call.arguments)})
+        except ValueError as exc:
+            return ToolExecutionResult(output=str(exc), is_error=True)
         if call.name == "read_skill" and self.skills:
             try:
                 skill = self.skills.get(session.workspace, str(call.arguments.get("name", "")))
@@ -867,32 +1006,45 @@ class AgentRunner:
                     ),
                     "Skill not available automatically",
                 )
+        permission_mode = session.permission_mode
         try:
-            policy = self.policy.evaluate(call.name, call.arguments, session.workspace)
+            policy = self.policy.evaluate(call.name, call.arguments, session.workspace, permission_mode)
         except (ValueError, KeyError, TypeError) as exc:
             return ToolExecutionResult(output=f"Invalid tool arguments: {exc}", is_error=True)
-        permission_mode = session.permission_mode
         registered_tools = {str(tool["name"]) for tool in self.tools.definitions()}
         if call.name not in registered_tools:
             return self._denied_result(policy, "Unregistered tool")
         if permission_mode == PermissionMode.FULL_ACCESS:
             policy.decision = RiskLevel.ALLOW
             policy.network = True
-            policy.reasons.append("Full access mode permits host execution as the current user")
+            policy.capabilities = sorted(set(policy.capabilities) | {"host_full_access", "network_access"})
+            policy.reasons = ["Full access mode permits host execution as the current user"]
+            for key in ("path", "cwd", "source_path", "destination_path"):
+                raw_path = call.arguments.get(key)
+                if not isinstance(raw_path, str) or not raw_path or (call.name == "read_skill" and key == "path"):
+                    continue
+                resolved = str((Path(session.workspace) / raw_path).resolve())
+                if resolved not in policy.affected_paths:
+                    policy.affected_paths.append(resolved)
         if hook_result.risk_floor and RISK_ORDER[hook_result.risk_floor] > RISK_ORDER[policy.decision]:
             policy.decision = hook_result.risk_floor
             policy.reasons.append("A registered hook raised the minimum risk level")
         if policy.decision == RiskLevel.DENY:
             return self._denied_result(policy, "Policy denied this operation")
-        if (policy.decision == RiskLevel.ASK and permission_mode != PermissionMode.REQUEST_APPROVAL
-                and not self.approvals.is_granted(session.header.id, policy.fingerprint)):
+        must_ask_each_time = permission_mode == PermissionMode.REQUEST_APPROVAL and bool(
+            {"external_file_write", "network_access"} & set(policy.capabilities)
+        )
+        already_granted = not must_ask_each_time and self.approvals.is_granted(
+            session.header.id, policy.fingerprint,
+        )
+        if policy.decision == RiskLevel.ASK and permission_mode == PermissionMode.FULL_ACCESS:
             await self._append(session, "approval_decision", {
                 "approval_id": new_id("approval"), "decision": "allow_once",
                 "fingerprint": policy.fingerprint, "automatic": True,
                 "permission_mode": permission_mode.value, "call_id": call.call_id,
                 "tool_name": call.name, "policy": policy.model_dump(mode="json"),
             }, run.id)
-        elif policy.decision == RiskLevel.ASK and not self.approvals.is_granted(session.header.id, policy.fingerprint):
+        elif policy.decision == RiskLevel.ASK and not already_granted:
             approval_id = new_id("approval")
             self.approvals.open(approval_id, session.header.id, policy.fingerprint)
             try:
@@ -928,11 +1080,26 @@ class AgentRunner:
                 return self._denied_result(policy, message)
             await self._set_status(run, session, RunStatus.EXECUTING)
 
+        if call.name == "delegate_task":
+            if self.subagents is None:
+                return ToolExecutionResult(output="Subagents are unavailable", is_error=True)
+
+            def budget_available() -> bool:
+                return ((not self.max_run_tokens or run.state["usage"]["total_tokens"] < self.max_run_tokens)
+                        and (not self.max_run_cost_usd
+                             or float(run.state.get("estimated_cost_usd", 0)) < self.max_run_cost_usd))
+
+            return await self.subagents.delegate(
+                session, run.id, call.call_id, call.arguments,
+                context_window=self.projector.context_window, budget_check=budget_available,
+            )
+
         mutating = call.name in {"apply_patch", "create_file", "delete_file", "move_file", "run_command"} or bool(
             getattr(self.tools, "plugins", None) and self.tools.plugins.get(call.name)
         )
+        external_file_write = "external_file_write" in policy.capabilities
         if mutating:
-            capabilities = await (self.tools.host.inspect() if permission_mode == PermissionMode.FULL_ACCESS
+            capabilities = await (self.tools.host.inspect() if permission_mode == PermissionMode.FULL_ACCESS or external_file_write
                                   else self.tools.sandbox.inspect())
             await self._append(
                 session,
@@ -947,20 +1114,29 @@ class AgentRunner:
                     "network": policy.network,
                     "workspace": session.workspace,
                     "credential_policy": ("host-user-access" if permission_mode == PermissionMode.FULL_ACCESS
-                                          else "not-forwarded"),
+                                          else "approved-file-only" if external_file_write else "not-forwarded"),
+                    "external_file_scope": policy.affected_paths if external_file_write else [],
                     "permission_mode": permission_mode.value,
                 },
                 run.id,
             )
         try:
+            effective_arguments = dict(call.arguments)
+            if call.name == "run_command" and policy.network:
+                effective_arguments["network"] = True
             if permission_mode == PermissionMode.FULL_ACCESS:
                 result = await self.tools.execute(
-                    session.header.id, session.workspace, call.name, call.arguments,
+                    session.header.id, session.workspace, call.name, effective_arguments,
                     permission_mode=permission_mode,
+                )
+            elif external_file_write:
+                result = await self.tools.execute(
+                    session.header.id, session.workspace, call.name, effective_arguments,
+                    allowed_external_paths=policy.affected_paths,
                 )
             else:
                 result = await self.tools.execute(
-                    session.header.id, session.workspace, call.name, call.arguments,
+                    session.header.id, session.workspace, call.name, effective_arguments,
                 )
         except asyncio.CancelledError:
             if mutating:

@@ -19,6 +19,7 @@ from .checkpoints import CheckpointStore
 from .hooks import HookRegistry, load_configured_hook
 from .skills import SkillCatalog
 from .model_settings import ModelSettingsStore
+from .memory import WorkspaceHandoffHook, WorkspaceHandoffStore
 from .sandbox import create_platform_sandbox
 from .security import PolicyEngine
 from .storage import EventHub, SessionStore, WorkspaceStore
@@ -28,6 +29,7 @@ from .tools import TOOL_DEFINITIONS
 from .tool_plugins import ToolPluginRegistry, load_tool_plugin
 from .workspaces import WorkspaceInspector
 from .worktrees import WorktreeManager
+from .subagents import SubAgentManager
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -41,6 +43,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         env_base_url=settings.openai_base_url,
         env_brief_model=settings.brief_model,
         env_fallback_model=settings.fallback_model,
+        default_context_window=settings.context_window,
     )
     adapter = model_settings.adapter
 
@@ -63,6 +66,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         max_command_timeout=settings.command_timeout,
         skills=skills,
         plugins=tool_plugins,
+        sessions=sessions,
     )
     hooks = HookRegistry()
     hooks.register(TaskBriefHook(adapter))
@@ -76,6 +80,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         settings.reserve_tokens,
         settings.keep_recent_tokens,
     )
+    handoff_store = WorkspaceHandoffStore(settings.data_dir / "handoffs", sessions, adapter, compactor)
+    compactor.handoff_store = handoff_store
+    tools.handoff_store = handoff_store
+    hooks.register(WorkspaceHandoffHook(sessions, handoff_store))
     runner = AgentRunner(
         sessions=sessions,
         events=events,
@@ -96,6 +104,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         skills=skills,
         checkpoints=checkpoints,
     )
+    runner.configure_context_window(model_settings.status()["effective_context_window"])
+    runner.subagents = SubAgentManager(settings.data_dir / "subagents", sessions, adapter, tools,
+                                       checkpoints, emit=runner._append)
+    tools.subagents_enabled = True
     services = ApiServices(
         workspaces=workspaces,
         inspector=inspector,
@@ -111,10 +123,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         skills=skills,
         checkpoints=checkpoints,
         worktrees=worktrees,
+        handoff_store=handoff_store,
     )
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
+        await runner.subagents.recover()
         await sessions.recover_all(checkpoints, worktrees)
         for session_info in sessions.list():
             approvals.restore_session_grants(sessions.get(session_info["id"]))

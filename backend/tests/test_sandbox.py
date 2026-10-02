@@ -43,6 +43,26 @@ class CapturingSandbox:
 
 
 @pytest.mark.asyncio
+async def test_subagent_sandbox_mounts_workspace_read_only_and_hides_linux_home(tmp_path: Path, monkeypatch):
+    captured = []
+
+    async def fake_exec(*args, **kwargs):
+        captured.append(args)
+        return FakeProcess()
+
+    monkeypatch.setattr("traceforge.sandbox.asyncio.create_subprocess_exec", fake_exec)
+    request = ExecutionRequest(workspace=str(tmp_path), command="python3 -c 'print(1)'", workspace_read_only=True)
+    await DockerSandbox("traceforge-runner:local").execute(request)
+    docker_args = captured.pop()
+    assert docker_args[docker_args.index("--mount") + 1].endswith(",readonly")
+    await BubblewrapSandbox().execute(request)
+    args = captured.pop()
+    assert "--bind" not in args
+    assert not any(args[index:index + 3] == ("--ro-bind", "/", "/") for index in range(len(args)))
+    assert "/home" not in args and "/root" not in args
+
+
+@pytest.mark.asyncio
 async def test_docker_execution_uses_hardened_profile(tmp_path: Path, monkeypatch):
     captured: list[tuple[str, ...]] = []
 
@@ -61,6 +81,30 @@ async def test_docker_execution_uses_hardened_profile(tmp_path: Path, monkeypatc
     assert "no-new-privileges:true" in args
     assert not any("docker.sock" in value for value in args)
     assert result.profile["read_only_root"] is True
+
+
+@pytest.mark.asyncio
+async def test_every_docker_execution_trusts_only_current_mount(tmp_path: Path, monkeypatch):
+    captured = []
+
+    async def fake_exec(*args, **kwargs):
+        captured.append(args)
+        return FakeProcess()
+
+    monkeypatch.setattr("traceforge.sandbox.asyncio.create_subprocess_exec", fake_exec)
+    sandbox = DockerSandbox("traceforge-runner:local")
+    for _ in range(2):
+        await sandbox.execute(ExecutionRequest(
+            workspace=str(tmp_path), command="git status --short",
+            env={"GIT_CONFIG_COUNT": "1", "GIT_CONFIG_VALUE_0": "*"},
+        ))
+    for args in captured:
+        env = dict(args[index + 1].split("=", 1) for index, value in enumerate(args) if value == "--env")
+        assert env["GIT_CONFIG_COUNT"] == "2"
+        assert env["GIT_CONFIG_VALUE_0"] == ""
+        assert env["GIT_CONFIG_VALUE_1"] == "/workspace"
+        assert env["GIT_CONFIG_KEY_0"] == env["GIT_CONFIG_KEY_1"] == "safe.directory"
+        assert "*" not in env.values()
 
 
 @pytest.mark.asyncio
@@ -101,9 +145,10 @@ async def test_patch_worker_path_matches_sandbox_backend(tmp_path: Path, backend
         "session",
         str(tmp_path),
         "apply_patch",
-        {"path": "nested/file.txt", "old_text": "old", "new_text": "new", "replace_all": False},
+        {"path": "nested/file.txt", "old_text": "old", "new_text": "new"},
     )
     assert result.is_error is False
     assert expected_worker in sandbox.request.command
     encoded = sandbox.request.command.split()[-1]
     assert json.loads(base64.urlsafe_b64decode(encoded))["path"] == "nested/file.txt"
+    assert json.loads(base64.urlsafe_b64decode(encoded))["replace_all"] is False

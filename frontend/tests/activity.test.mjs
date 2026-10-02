@@ -45,6 +45,19 @@ test("only readable model reasoning is shown", () => {
   })), "");
 });
 
+test("subagent updates attach to the delegating turn without adding tool counts", () => {
+  const groups = buildActivityGroups([
+    entry("user_message", "u1", { content: "回查历史" }),
+    entry("tool_call", "c1", { name: "delegate_task", call_id: "delegate-1" }),
+    entry("subagent_spawn", "s1", { call_id: "delegate-1", child_session_id: "child-1" }),
+    entry("subagent_update", "s2", { child_session_id: "child-1", status: "completed" }),
+    entry("tool_result", "o1", { call_id: "delegate-1", output: "report" }),
+  ]);
+  assert.equal(groups.length, 1);
+  assert.equal(groups[0].toolCount, 1);
+  assert.deepEqual(groups[0].entries.map((item) => item.type), ["tool_call", "subagent_spawn", "subagent_update", "tool_result"]);
+});
+
 test("inline reasoning keeps earlier steps without duplicating the streamed final step", () => {
   const group = {
     entries: [

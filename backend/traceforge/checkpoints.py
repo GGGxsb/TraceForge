@@ -7,6 +7,7 @@ import shutil
 import stat
 import subprocess
 from pathlib import Path
+from typing import Callable
 from uuid import uuid4
 
 from .file_filter import is_ignored_path
@@ -51,7 +52,7 @@ class CheckpointStore:
     @staticmethod
     def _git_run(workspace: Path, *args: str) -> subprocess.CompletedProcess[bytes]:
         try:
-            return subprocess.run(["git", "-C", str(workspace), *args], capture_output=True,
+            return subprocess.run(["git", "-c", "core.fsmonitor=false", "-C", str(workspace), *args], capture_output=True,
                                   timeout=30, check=False)
         except subprocess.TimeoutExpired as exc:
             raise CheckpointError("Git checkpoint operation timed out") from exc
@@ -115,7 +116,8 @@ class CheckpointStore:
         return sorted(paths, key=lambda path: str(path))
 
     def inventory(self, session: JsonlSession, *, save_blobs: bool = False,
-                  workspace_override: str | None = None) -> dict[str, dict[str, int | str]]:
+                  workspace_override: str | None = None,
+                  path_filter: Callable[[Path], bool] | None = None) -> dict[str, dict[str, int | str]]:
         workspace = Path(workspace_override or session.workspace).resolve(strict=True)
         data_dir = self.root.parent.resolve()
         if data_dir == workspace:
@@ -126,6 +128,8 @@ class CheckpointStore:
         for candidate in self._paths(workspace):
             relative = candidate.relative_to(workspace)
             name = relative.as_posix()
+            if path_filter is not None and not path_filter(relative):
+                continue
             # Credentials and generated directories are deliberately outside the
             # managed code state. They are never deleted during restore.
             if is_ignored_path(relative):
@@ -158,8 +162,8 @@ class CheckpointStore:
                 self._save_blob(session, digest, data)
         return files
 
-    def capture(self, session: JsonlSession) -> dict[str, str | int]:
-        files = self.inventory(session, save_blobs=True)
+    def capture(self, session: JsonlSession, *, path_filter: Callable[[Path], bool] | None = None) -> dict[str, str | int]:
+        files = self.inventory(session, save_blobs=True, path_filter=path_filter)
         git_state, index = self._git_state(Path(session.workspace))
         if git_state and index and git_state["index_exists"]:
             self._save_blob(session, str(git_state["index_sha256"]), index.read_bytes())

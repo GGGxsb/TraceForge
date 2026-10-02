@@ -1,13 +1,77 @@
+# Local configuration and credentials
 .env
+.env.*
+!.env.example
+*.env
+.envrc
+model-settings.json
+credentials.json
+*.pem
+*.p12
+*.pfx
+
+# Python environments, caches and build output
 .venv/
+venv/
 __pycache__/
+*.py[cod]
+*.egg-info/
 .pytest_cache/
 .ruff_cache/
-*.pyc
-node_modules/
+.mypy_cache/
+.pyre/
+.tox/
+.nox/
+build/
 dist/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# Frontend dependencies, build caches and test output
+node_modules/
+.pnpm-store/
 .vite/
+*.tsbuildinfo
 coverage/
+playwright-report/
+test-results/
+
+# TraceForge runtime data and project handoff
+.traceforge/
+.traceforge-data*/
+.traceforge-config*/
+/sessions/
+/artifacts/
+/checkpoints/
+/subagents/
+/worktrees/
+/handoffs/
+/projects/
+/docker-data/
+/docker-config/
+
+# Machine-specific Compose overrides (keep the shared compose.yaml)
+compose.override.yaml
+compose.override.yml
+docker-compose.override.yaml
+docker-compose.override.yml
+
+# Local evaluation reports, raw traces, patches and screenshots
+/evals/results/*
+!/evals/results/README.md
+
+# Logs, editor and operating-system files
 *.log
-.traceforge-data/
+*.pid
+*.pid.lock
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.swp
+*.swo
+*~
 

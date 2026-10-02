@@ -63,7 +63,7 @@ async def test_web_model_settings_apply_without_restart_and_survive_restart(tmp_
         assert services.runner.adapter is shared
         assert services.runner.compactor.adapter is shared
         assert services.branches.adapter is shared
-        assert services.hooks._hooks[0].adapter is shared
+        assert next(hook for hook in services.hooks._hooks if hook.name == "task_brief").adapter is shared
         assert shared._delegate.model == "test-main"
         assert shared._delegate.base_url == "https://gateway.example.test/v1"
         assert str(shared._delegate.client.base_url).startswith("https://gateway.example.test/v1")
@@ -110,6 +110,37 @@ async def test_web_model_settings_apply_without_restart_and_survive_restart(tmp_
         assert reset.status_code == 200
         assert reset.json()["configured"] is False
     assert not config_path.exists()
+
+
+@pytest.mark.asyncio
+async def test_model_specific_context_windows_use_smaller_fallback_limit(tmp_path: Path):
+    app = create_app(isolated_settings(tmp_path))
+    services = app.state.services
+    transport = httpx.ASGITransport(app=app, client=("127.0.0.1", 1234))
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        saved = await client.put(
+            "/api/model-settings",
+            headers={"X-TraceForge-UI": "1"},
+            json={
+                "api_key": "sk-test", "model": "large-model", "context_window": 128000,
+                "fallback_model": "small-model", "fallback_context_window": 8192,
+            },
+        )
+        assert saved.status_code == 200
+        assert saved.json()["effective_context_window"] == 8192
+        assert services.runner.projector.context_window == 8192
+        assert services.runner.compactor.context_window == 8192
+        assert services.runner.compactor.reserve_tokens == 2048
+        assert services.runner.compactor.keep_recent_tokens <= 3072
+
+        changed = await client.put(
+            "/api/model-settings",
+            headers={"X-TraceForge-UI": "1"},
+            json={"model": "large-model", "context_window": 128000},
+        )
+        assert changed.status_code == 200
+        assert changed.json()["effective_context_window"] == 128000
+        assert services.runner.projector.context_window == 128000
 
 
 @pytest.mark.asyncio

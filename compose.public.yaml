@@ -1,0 +1,14 @@
+# Use together with compose.yaml. This is a private, authenticated website,
+# not a multi-user service. All authorized users share the same application.
+services:
+  traceforge:
+    ports:
+      - "80:80"
+      - "443:443"
+  proxy:
+    environment:
+      TRACEFORGE_DOMAIN: ${TRACEFORGE_DOMAIN:?Set your public DNS name in .env}
+      TRACEFORGE_AUTH_USER: ${TRACEFORGE_AUTH_USER:-owner}
+      TRACEFORGE_AUTH_PASSWORD_HASH: ${TRACEFORGE_AUTH_PASSWORD_HASH:?Generate a bcrypt password hash and set it in .env}
+    volumes:
+      - ./infra/deploy/Caddyfile.public:/etc/caddy/Caddyfile:ro

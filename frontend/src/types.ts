@@ -18,6 +18,9 @@ export type ModelSettings = {
   base_url: string;
   brief_model: string;
   fallback_model: string;
+  context_window: number;
+  fallback_context_window: number | null;
+  effective_context_window: number;
   source: "web" | "environment";
   load_error: string | null;
 };
@@ -136,4 +139,16 @@ export type RunEvent = {
   type: string;
   timestamp?: string;
   payload?: Record<string, any>;
+};
+
+export type SubAgentDetail = {
+  header: SessionDetail["header"] & {
+    kind: "subagent";
+    parent_session_id: string;
+    parent_run_id: string;
+    spawn_entry_id: string;
+    role: "explore" | "reviewer";
+  };
+  entries: SessionEntry[];
+  recovery_issues: string[];
 };

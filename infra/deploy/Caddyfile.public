@@ -1,0 +1,23 @@
+{
+    admin off
+}
+
+(authenticated_app) {
+    # Protect every page, API request, and WebSocket upgrade.
+    basic_auth {
+        {env.TRACEFORGE_AUTH_USER} {env.TRACEFORGE_AUTH_PASSWORD_HASH}
+    }
+    reverse_proxy 127.0.0.1:8001 {
+        # The application needs no access to the website login credentials.
+        header_up -Authorization
+    }
+}
+
+https://{$TRACEFORGE_DOMAIN} {
+    import authenticated_app
+}
+
+# Retain localhost/SSH access, with the same authentication in public mode.
+http://:8000 {
+    import authenticated_app
+}

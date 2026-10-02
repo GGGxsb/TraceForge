@@ -63,6 +63,12 @@ class SessionHeader(BaseModel):
     workspace_id: str
     workspace: str
     created_at: str = Field(default_factory=utc_now)
+    kind: Literal["session", "subagent"] = "session"
+    parent_session_id: str | None = None
+    parent_run_id: str | None = None
+    spawn_entry_id: str | None = None
+    role: Literal["explore", "reviewer"] | None = None
+    snapshot_id: str | None = None
 
 
 class SessionEntry(BaseModel):
@@ -166,6 +172,7 @@ class ExecutionRequest(BaseModel):
     timeout_seconds: int = 120
     network: bool = False
     env: dict[str, str] = Field(default_factory=dict)
+    workspace_read_only: bool = False
 
 
 class ExecutionResult(BaseModel):

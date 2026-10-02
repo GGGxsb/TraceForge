@@ -124,7 +124,9 @@ const visibleEntryTypes = new Set([
   "assistant_message",
   "clarification_answer",
   "approval_request",
+  "project_handoff",
   "compaction",
+  "context_checkpoint",
   "branch_summary",
   "run_state",
 ]);
@@ -146,6 +148,9 @@ function statusLabel(status?: string) {
     completed: "已完成",
     failed: "失败",
     cancelled: "已取消",
+    queued: "排队中",
+    partial: "部分完成",
+    timeout: "已超时",
   };
   return labels[status ?? ""] ?? status ?? "空闲";
 }
@@ -196,8 +201,9 @@ function StructuredSummary({ value }: { value: unknown }) {
   ))}</div>;
 }
 
-function EntryCard({ entry, activity, hasInlineReasoning, onOpenTools }: {
+function EntryCard({ entry, sessionId, activity, hasInlineReasoning, onOpenTools }: {
   entry: SessionEntry;
+  sessionId: string;
   activity?: ActivityGroup;
   hasInlineReasoning?: boolean;
   onOpenTools?: () => void;
@@ -237,11 +243,26 @@ function EntryCard({ entry, activity, hasInlineReasoning, onOpenTools }: {
       </article>
     );
   }
+  if (entry.type === "project_handoff") {
+    return <article className="trace-card summary-card">
+      <div className="trace-title"><Braces size={15} /> 项目交接文件</div>
+      <details><summary>查看读取方式</summary><p className="handoff-brief">{String(payload.content ?? "")}</p></details>
+      <a href={`/api/workspaces/${encodeURIComponent(String(payload.workspace_id ?? ""))}/handoff`}>查看项目交接文件</a>
+    </article>;
+  }
+  if (entry.type === "context_checkpoint") {
+    return <article className="trace-card summary-card">
+      <div className="trace-title"><Braces size={15} /> 上下文已交接到项目文件</div>
+      <p>较早的对话原文仍保存在会话树中；Agent 可按需读取项目交接文件或搜索原文。</p>
+      {payload.handoff_file && <a href={`/api/sessions/${encodeURIComponent(sessionId)}/handoffs/${encodeURIComponent(entry.id)}`}>查看当前项目交接文件</a>}
+    </article>;
+  }
   if (entry.type === "compaction" || entry.type === "branch_summary") {
     return (
       <article className="trace-card summary-card">
-        <div className="trace-title"><Braces size={15} /> {entry.type === "compaction" ? "滚动上下文摘要" : "分支上下文回填"}</div>
+        <div className="trace-title"><Braces size={15} /> {entry.type === "compaction" ? "旧版滚动摘要" : "分支上下文回填"}</div>
         <details><summary>查看{entry.type === "compaction" ? "保留的上下文" : "离开分支的关键上下文"}</summary><StructuredSummary value={payload.summary} /></details>
+        {entry.type === "compaction" && payload.handoff_file && <a href={`/api/sessions/${encodeURIComponent(sessionId)}/handoffs/${encodeURIComponent(entry.id)}`}>查看当前项目交接文件</a>}
       </article>
     );
   }
@@ -284,10 +305,98 @@ function InlineReasoning({ activity, liveReasoning, streaming }: {
   );
 }
 
-function ToolPanel({ groups, selectedId, onSelect }: {
+function HistoryCitation({ reference, evidence }: {
+  reference: { session_id: string; entry_id: string };
+  evidence?: SessionEntry;
+}) {
+  let source: any = null;
+  let original: any = null;
+  try {
+    source = JSON.parse(String(evidence?.payload.output ?? ""));
+    original = JSON.parse(source.content);
+  } catch { /* Paginated output may contain only part of a JSON record. */ }
+  const text = original?.payload?.content ?? original?.payload?.answer;
+  return <details className="subagent-evidence">
+    <summary>查看引用原文</summary>
+    <small>{reference.session_id} / {reference.entry_id}</small>
+    {source && <p>{source.on_active_branch ? "来源会话的当前分支" : "来源会话的历史分支"}{original ? ` · ${original.type} · 第 ${original.seq} 条` : " · 分段原文"}</p>}
+    {typeof text === "string" && <MarkdownMessage content={text} />}
+    <details><summary>原始 JSONL 记录</summary><pre>{original ? JSON.stringify(original, null, 2) : String(source?.content ?? evidence?.payload.output ?? "本次未读取该原文，请查看完整报告。")}</pre></details>
+    {source?.has_more && <p>此处仅显示已读取的片段，后续读取见子任务工具记录。</p>}
+    {evidence?.payload.artifact_id && <a href={`/api/artifacts/${evidence.payload.artifact_id}`} target="_blank" rel="noreferrer">完整输出</a>}
+  </details>;
+}
+
+function ToolReport({ result, subagent }: { result: SessionEntry; subagent: boolean }) {
+  let report: any = null;
+  if (subagent) {
+    try { report = JSON.parse(String(result.payload.output ?? "")); } catch { /* Plain-text execution failure. */ }
+  }
+  if (!report?.summary) return <pre>{String(result.payload.output ?? "")}</pre>;
+  return <div className="subagent-report">
+    <MarkdownMessage content={String(report.summary)} />
+    <small>{report.findings?.length ?? 0} 条发现 · {report.unresolved?.length ?? 0} 个待核实问题</small>
+    <details><summary>结构化报告</summary><pre>{JSON.stringify(report, null, 2)}</pre></details>
+  </div>;
+}
+
+function SubAgentTrace({ sessionId, childId, revision }: { sessionId: string; childId: string; revision: number }) {
+  const [expanded, setExpanded] = useState(false);
+  const [detail, setDetail] = useState<import("./types").SubAgentDetail | null>(null);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    if (!expanded) return;
+    let disposed = false;
+    api.subagent(sessionId, childId).then((value) => {
+      if (!disposed) { setDetail(value); setError(""); }
+    }).catch((caught) => { if (!disposed) setError(String(caught)); });
+    return () => { disposed = true; };
+  }, [sessionId, childId, revision, expanded]);
+  const report = detail?.entries.filter((entry) => entry.type === "subagent_result").at(-1)?.payload;
+  const results = new Map((detail?.entries ?? []).filter((entry) => entry.type === "tool_result").map((entry) => [String(entry.payload.call_id), entry]));
+  const historyReads = new Map((detail?.entries ?? []).filter((entry) => entry.type === "tool_call" && entry.payload.name === "read_history_entry")
+    .map((entry) => [`${entry.payload.arguments?.session_id}:${entry.payload.arguments?.entry_id}`, results.get(String(entry.payload.call_id))]));
+  return <div className="subagent-trace">
+    <button type="button" className="subagent-toggle" aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>
+      <Bot size={14} /><span>{expanded ? "收起子任务轨迹" : "查看子任务轨迹与原文证据"}</span><ChevronRight size={13} />
+    </button>
+    {expanded && <div className="subagent-trace-body">
+      {error && <p role="alert">{error}</p>}
+      {!detail && !error && <p>正在加载子任务…</p>}
+      {detail && <>
+        <p className="subagent-scope">独立上下文 · 项目只读 · 原文保留</p>
+        {report && <div className="subagent-report"><b>{statusLabel(String(report.status))}</b><MarkdownMessage content={String(report.summary ?? "")} />
+          {(report.findings ?? []).map((finding: any, index: number) => <div key={index}>
+            <MarkdownMessage content={String(finding.description ?? "")} />
+            {finding.file && <code>{finding.file}{finding.line ? `:${finding.line}` : ""}</code>}
+            {(finding.evidence ?? []).map((ref: any) => {
+              const evidence = historyReads.get(`${ref.session_id}:${ref.entry_id}`);
+              return <HistoryCitation key={`${ref.session_id}:${ref.entry_id}`} reference={ref} evidence={evidence} />;
+            })}
+          </div>)}
+          {(report.unresolved ?? []).length > 0 && <p>待核实：{report.unresolved.join("；")}</p>}
+        </div>}
+        {detail.entries.filter((entry) => ["tool_call", "assistant_message", "model_reasoning"].includes(entry.type)).map((entry) => {
+          if (entry.type === "assistant_message") return <details key={entry.id}><summary>子 Agent 输出</summary><MarkdownMessage content={String(entry.payload.content ?? "")} /></details>;
+          if (entry.type === "model_reasoning") return <details key={entry.id}><summary>子 Agent 思考</summary><pre>{reasoningText(entry)}</pre></details>;
+          const result = results.get(String(entry.payload.call_id));
+          return <details key={entry.id} className={result?.payload.is_error ? "failed" : ""}>
+            <summary>{String(entry.payload.name)} · {result ? result.payload.is_error ? "失败" : "完成" : "执行中"}</summary>
+            <b>参数</b><pre>{JSON.stringify(entry.payload.arguments, null, 2)}</pre>
+            {result && <><b>结果 / 原文证据</b><pre>{String(result.payload.output ?? "")}</pre></>}
+            {result?.payload.artifact_id && <a href={`/api/artifacts/${result.payload.artifact_id}`} target="_blank" rel="noreferrer">完整输出</a>}
+          </details>;
+        })}
+      </>}
+    </div>}
+  </div>;
+}
+
+function ToolPanel({ groups, selectedId, onSelect, sessionId }: {
   groups: ActivityGroup[];
   selectedId: string;
   onSelect: (id: string) => void;
+  sessionId: string;
 }) {
   const group = groups.find((item) => item.id === selectedId) ?? groups.at(-1);
   const results = new Map((group?.entries ?? []).filter((entry) => entry.type === "tool_result").map((entry) => [String(entry.payload.call_id), entry]));
@@ -308,13 +417,18 @@ function ToolPanel({ groups, selectedId, onSelect }: {
         {toolCalls.map((entry) => {
           const result = results.get(String(entry.payload.call_id));
           const failed = !!result?.payload.is_error;
+          const spawn = group?.entries.find((item) => item.type === "subagent_spawn" && item.payload.call_id === entry.payload.call_id);
+          const childId = String(spawn?.payload.child_session_id ?? result?.payload.metadata?.subagent?.child_session_id ?? "");
+          const update = childId ? group?.entries.filter((item) => item.type === "subagent_update" && item.payload.child_session_id === childId).at(-1) : undefined;
+          const childStatus = String(update?.payload.status ?? spawn?.payload.status ?? "");
           return (
             <details key={entry.id} className={`activity-step tool-step ${failed ? "failed" : ""}`}>
-              <summary><TerminalSquare size={15} /><span>{String(entry.payload.name ?? "工具调用")}</span><small>{result ? failed ? "失败" : "完成" : "运行中"}</small><ChevronRight size={13} className="disclosure" /></summary>
+              <summary>{childId ? <Bot size={15} /> : <TerminalSquare size={15} />}<span>{childId ? `子任务 · ${entry.payload.arguments?.role === "reviewer" ? "独立审查" : "代码 / 历史调查"}` : String(entry.payload.name ?? "工具调用")}</span><small>{childStatus ? statusLabel(childStatus) : result ? failed ? "失败" : "完成" : "运行中"}</small><ChevronRight size={13} className="disclosure" /></summary>
               <div className="activity-step-body">
                 <b>参数</b><pre>{JSON.stringify(entry.payload.arguments ?? {}, null, 2)}</pre>
-                {result && <><b>结果{typeof result.payload.exit_code === "number" ? ` · 退出码 ${result.payload.exit_code}` : ""}</b><pre>{String(result.payload.output ?? "")}</pre></>}
+                {result && <><b>结果{typeof result.payload.exit_code === "number" ? ` · 退出码 ${result.payload.exit_code}` : ""}</b><ToolReport result={result} subagent={!!childId} /></>}
                 {result?.payload.artifact_id && <a href={`/api/artifacts/${result.payload.artifact_id}`} target="_blank" rel="noreferrer">查看完整输出</a>}
+                {childId && <SubAgentTrace sessionId={sessionId} childId={childId} revision={update?.seq ?? spawn?.seq ?? 0} />}
               </div>
             </details>
           );
@@ -392,6 +506,7 @@ export default function App() {
   const [activeRun, setActiveRun] = useState("");
   const [pickingFolder, setPickingFolder] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [queueSubmitting, setQueueSubmitting] = useState(false);
   const [answeringQuestionId, setAnsweringQuestionId] = useState("");
   const [error, setError] = useState("");
   const [modelSettingsOpen, setModelSettingsOpen] = useState(false);
@@ -402,6 +517,8 @@ export default function App() {
   const [baseUrl, setBaseUrl] = useState("");
   const [briefModelName, setBriefModelName] = useState("");
   const [fallbackModelName, setFallbackModelName] = useState("");
+  const [contextWindow, setContextWindow] = useState("128000");
+  const [fallbackContextWindow, setFallbackContextWindow] = useState("128000");
   const [modelKey, setModelKey] = useState("");
   const [settingsBusy, setSettingsBusy] = useState(false);
   const [settingsError, setSettingsError] = useState("");
@@ -593,6 +710,9 @@ export default function App() {
             setReasoningStreaming(false);
             workspaceRefreshPending.current = true;
             void loadWorkspaceStatus(sessionId).catch((caught) => setError(String(caught)));
+          } else {
+            setActiveRun(event.run_id ?? "");
+            setBusy(true);
           }
         }
         if (event.type === "tool_result" && workspaceChangingTools.has(String(event.payload?.tool_name ?? ""))) {
@@ -625,6 +745,12 @@ export default function App() {
   const explorer = useMemo(() => buildExplorer(files), [files]);
   const diffFiles = useMemo(() => parseDiff(diff), [diff]);
   const branchEntries = session?.active_branch ?? [];
+  const pendingQueuedMessages = useMemo(() => {
+    const settled = new Set(branchEntries
+      .filter((entry) => entry.type === "user_message" || entry.type === "queued_message_cancel")
+      .map((entry) => String(entry.payload.queued_message_id ?? "")));
+    return branchEntries.filter((entry) => entry.type === "queued_message" && !settled.has(entry.id));
+  }, [branchEntries]);
   const runStats = useMemo(() => {
     const usage = (session?.active_branch ?? []).filter((entry) => entry.type === "model_usage");
     const terminal = (session?.active_branch ?? []).filter((entry) => entry.type === "run_state" && ["completed", "failed", "cancelled"].includes(String(entry.payload.status)));
@@ -802,10 +928,25 @@ export default function App() {
     }
   }
 
-  async function sendPrompt(event: FormEvent) {
-    event.preventDefault();
+  async function submitPrompt(timing: "after_tool_batch" | "after_run" = "after_tool_batch") {
     const content = prompt.trim();
-    if (!content || !sessionId || busy || pendingQuestions.length || activeSessionArchived || !selectedProjectAvailable) return;
+    if (!content || !sessionId || queueSubmitting || (!busy && pendingQuestions.length) || activeSessionArchived || !selectedProjectAvailable) return;
+    if (busy) {
+      if (!activeRun) return;
+      setQueueSubmitting(true);
+      setPrompt("");
+      setError("");
+      try {
+        await api.queueMessage(sessionId, activeRun, content, timing);
+        await loadSession(sessionId);
+      } catch (caught) {
+        setPrompt(content);
+        setError(caught instanceof Error ? caught.message : String(caught));
+      } finally {
+        setQueueSubmitting(false);
+      }
+      return;
+    }
     stickToBottomRef.current = true;
     setBusy(true);
     setStreaming("");
@@ -822,6 +963,33 @@ export default function App() {
       setPrompt(content);
       setError(caught instanceof Error ? caught.message : String(caught));
       void loadWorkspaceStatus(sessionId).catch(() => undefined);
+    }
+  }
+
+  function sendPrompt(event: FormEvent) {
+    event.preventDefault();
+    void submitPrompt();
+  }
+
+  async function startQueuedMessage(messageId: string) {
+    if (!sessionId || busy) return;
+    try {
+      const run = await api.startQueuedMessage(sessionId, messageId);
+      setActiveRun(run.run_id);
+      setBusy(true);
+      await loadSession(sessionId);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    }
+  }
+
+  async function cancelQueuedMessage(messageId: string) {
+    if (!sessionId) return;
+    try {
+      await api.cancelQueuedMessage(sessionId, messageId);
+      await loadSession(sessionId);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
     }
   }
 
@@ -953,6 +1121,8 @@ export default function App() {
       setBaseUrl(current.base_url);
       setBriefModelName(current.brief_model === current.model ? "" : current.brief_model);
       setFallbackModelName(current.fallback_model);
+      setContextWindow(String(current.context_window));
+      setFallbackContextWindow(String(current.fallback_context_window ?? current.context_window));
     } catch (caught) {
       setSettingsError(caught instanceof Error ? caught.message : String(caught));
     }
@@ -969,6 +1139,8 @@ export default function App() {
         base_url: baseUrl.trim(),
         brief_model: briefModelName.trim() || null,
         fallback_model: fallbackModelName.trim() || null,
+        context_window: Number(contextWindow),
+        fallback_context_window: fallbackModelName.trim() ? Number(fallbackContextWindow) : null,
       });
       setModelSettings(current);
       setHealth(await api.health());
@@ -991,6 +1163,8 @@ export default function App() {
       setBaseUrl(current.base_url);
       setBriefModelName(current.brief_model === current.model ? "" : current.brief_model);
       setFallbackModelName(current.fallback_model);
+      setContextWindow(String(current.context_window));
+      setFallbackContextWindow(String(current.fallback_context_window ?? current.context_window));
       setModelKey("");
       setHealth(await api.health());
     } catch (caught) {
@@ -1046,9 +1220,12 @@ export default function App() {
             <div className="settings-body">
               <label>OpenAI API Key<input type="password" autoComplete="off" value={modelKey} onChange={(event) => setModelKey(event.target.value)} placeholder={modelSettings?.has_api_key ? "已保存，留空保持不变" : "输入 API Key"} /></label>
               <label>主模型<input value={modelName} onChange={(event) => setModelName(event.target.value)} placeholder="输入 OpenAI 模型 ID" required maxLength={200} /></label>
+              <label>主模型上下文窗口 <small>token</small><input type="number" min={1024} step={1} value={contextWindow} onChange={(event) => setContextWindow(event.target.value)} required /></label>
               <label>Base URL <small>可选</small><input type="url" value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} placeholder="https://api.openai.com/v1" maxLength={2048} /></label>
               <label>TaskBrief 模型 <small>可选</small><input value={briefModelName} onChange={(event) => setBriefModelName(event.target.value)} placeholder="留空使用主模型" maxLength={200} /></label>
               <label>备用模型 <small>可选</small><input value={fallbackModelName} onChange={(event) => setFallbackModelName(event.target.value)} placeholder="主模型请求在流开始前失败时使用" maxLength={200} /></label>
+              {fallbackModelName.trim() && <label>备用模型上下文窗口 <small>token</small><input type="number" min={1024} step={1} value={fallbackContextWindow} onChange={(event) => setFallbackContextWindow(event.target.value)} required /></label>}
+              <p className="settings-hint">压缩阈值按主模型与备用模型中较小的窗口计算，并预留输出空间。请填写服务商实际公布的窗口大小；自定义 Base URL 无法可靠自动识别。</p>
               <p className="settings-hint">Base URL 留空时使用环境变量或 SDK 默认地址。自定义地址需支持 Responses API，API Key 会发送到该地址。配置保存在本机用户目录，密钥不会在页面回显；模型可用性会在实际请求时验证。</p>
               {modelSettings?.load_error && <p className="settings-error">{modelSettings.load_error}</p>}
               {settingsError && <p className="settings-error">{settingsError}</p>}
@@ -1068,7 +1245,7 @@ export default function App() {
           <div className="permission-dialog-icon"><AlertTriangle size={22} /></div>
           <h2>启用宿主机完全访问？</h2>
           <p>此会话后续的执行工具将以当前用户身份在宿主机运行，可以访问项目外文件和网络。工具调用不再经过沙箱，也不会逐次请求审批。</p>
-          <p>模式会记录在会话历史中；运行期间无法切换。只在信任当前任务和模型时使用。</p>
+          <p>项目外改动不会进入当前项目的变更栏或代码检查点。模式会记录在会话历史中；运行期间无法切换。</p>
           <div className="permission-dialog-actions"><button type="button" onClick={() => setFullAccessPending(false)} disabled={permissionBusy}>取消</button><button type="button" className="danger" onClick={() => void updatePermissionMode("full_access")} disabled={permissionBusy}>{permissionBusy ? "切换中…" : "启用完全访问"}</button></div>
         </div>
       </div>}
@@ -1172,7 +1349,7 @@ export default function App() {
               const liveReasoning = entry.id === activeTurnId ? streamingReasoning : "";
               const hasInlineReasoning = isTurn && (!!activity?.reasoningCount || !!liveReasoning.trim());
               return <Fragment key={entry.id}>
-                <EntryCard entry={entry} activity={activity} hasInlineReasoning={hasInlineReasoning} onOpenTools={() => { setSelectedToolTurnId(entry.id); setRightTab("tools"); }} />
+                <EntryCard entry={entry} sessionId={sessionId} activity={activity} hasInlineReasoning={hasInlineReasoning} onOpenTools={() => { setSelectedToolTurnId(entry.id); setRightTab("tools"); }} />
                 {hasInlineReasoning && <InlineReasoning activity={activity} liveReasoning={liveReasoning} streaming={entry.id === activeTurnId && reasoningStreaming} />}
               </Fragment>;
             })}
@@ -1194,7 +1371,7 @@ export default function App() {
               <div className="approval-actions">
                 <button onClick={() => void decideApproval("deny")} className="danger">拒绝</button>
                 <button onClick={() => void decideApproval("allow_once")}>允许一次</button>
-                <button onClick={() => void decideApproval("allow_session")} className="primary">本会话允许</button>
+                {!(permissionMode === "request_approval" && pendingApproval.payload.policy.capabilities?.some((capability: string) => capability === "network_access" || capability === "external_file_write")) && <button onClick={() => void decideApproval("allow_session")} className="primary">本会话允许</button>}
               </div>
             </div>
           )}
@@ -1222,9 +1399,17 @@ export default function App() {
             </div>
           </div>}
           {branchNotice && <div className="branch-notice"><GitBranch size={14} /><span>{branchNotice}</span><button type="button" onClick={() => setBranchNotice("")} aria-label="关闭分支提示"><X size={13} /></button></div>}
+          {pendingQueuedMessages.length > 0 && <div className="queued-messages" aria-label="待发送消息">
+            {pendingQueuedMessages.map((entry) => <div className="queued-message" key={entry.id}>
+              <span className="queued-message-timing">{entry.payload.timing === "after_tool_batch" ? "工具批次后插入" : "本轮结束后继续"}</span>
+              <span className="queued-message-content" title={String(entry.payload.content)}>{String(entry.payload.content)}</span>
+              {!busy && <button type="button" onClick={() => void startQueuedMessage(entry.id)}>继续</button>}
+              <button type="button" onClick={() => void cancelQueuedMessage(entry.id)} aria-label="取消待发送消息"><X size={13} /></button>
+            </div>)}
+          </div>}
           <form className="composer" onSubmit={sendPrompt}>
-            <textarea ref={composerRef} value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder={activeSessionArchived ? "请先恢复会话" : !selectedProjectAvailable ? "先重新定位项目目录" : workspaceStatus?.state === "diverged" ? "先处理工作区代码差异" : sessionId ? (pendingQuestions.length ? "请先回答上方的澄清问题" : "描述你希望 Agent 完成的工作…") : "先创建一个会话"} disabled={!sessionId || busy || pendingQuestions.length > 0 || activeSessionArchived || !selectedProjectAvailable || workspaceStatus?.state === "diverged"} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} />
-            <div className="composer-footer"><div className="composer-options"><label className={`permission-picker ${permissionMode === "full_access" ? "full-access" : ""}`} title={permissionMode === "request_approval" ? "有风险的操作先向你请求审批" : permissionMode === "auto_approve" ? "自动批准可审批操作，仍在沙箱中执行；核心禁止项保持拒绝" : "执行工具直接使用宿主机权限，可访问项目外文件和网络"}><ShieldCheck size={14} /><select aria-label="权限模式" value={permissionMode} onChange={(event) => requestPermissionMode(event.target.value as PermissionMode)} disabled={!sessionId || session?.header.id !== sessionId || busy || !!activeRun || permissionBusy || activeSessionArchived}><option value="request_approval">请求审批</option><option value="auto_approve">帮我批准</option><option value="full_access">完全访问</option></select></label><span>Enter 发送 · Shift+Enter 换行</span></div><button type="submit" disabled={!prompt.trim() || busy || !sessionId || pendingQuestions.length > 0 || activeSessionArchived || !selectedProjectAvailable || workspaceStatus?.state === "diverged"}>{busy ? <Loader2 size={16} className="spin" /> : <Send size={16} />}</button></div>
+            <textarea ref={composerRef} value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder={activeSessionArchived ? "请先恢复会话" : !selectedProjectAvailable ? "先重新定位项目目录" : workspaceStatus?.state === "diverged" ? "先处理工作区代码差异" : sessionId ? (busy ? "运行中也可以补充指令…" : pendingQuestions.length ? "请先回答上方的澄清问题" : "描述你希望 Agent 完成的工作…") : "先创建一个会话"} disabled={!sessionId || (!busy && pendingQuestions.length > 0) || activeSessionArchived || !selectedProjectAvailable || workspaceStatus?.state === "diverged"} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} />
+            <div className="composer-footer"><div className="composer-options"><label className={`permission-picker ${permissionMode === "full_access" ? "full-access" : ""}`} title={permissionMode === "request_approval" ? "编辑项目外文件和联网时每次询问；检测到的其他风险也会询问" : permissionMode === "auto_approve" ? "仅对检测到风险的操作请求批准；普通联网操作可在沙箱内执行" : "执行工具直接使用宿主机权限，可访问项目外文件和网络"}><ShieldCheck size={14} /><select aria-label="权限模式" value={permissionMode} onChange={(event) => requestPermissionMode(event.target.value as PermissionMode)} disabled={!sessionId || session?.header.id !== sessionId || busy || !!activeRun || permissionBusy || activeSessionArchived}><option value="request_approval">请求批准</option><option value="auto_approve">帮我批准</option><option value="full_access">完全访问权限</option></select></label><span>{busy ? "Enter 插入当前轮 · Shift+Enter 换行" : "Enter 发送 · Shift+Enter 换行"}</span></div><div className="composer-actions">{busy && <button type="button" className="queue-after-run" onClick={() => void submitPrompt("after_run")} disabled={!prompt.trim() || !activeRun || queueSubmitting}>本轮结束后继续</button>}<button type="submit" disabled={!prompt.trim() || queueSubmitting || (busy && !activeRun) || !sessionId || (!busy && pendingQuestions.length > 0) || activeSessionArchived || !selectedProjectAvailable || workspaceStatus?.state === "diverged"}>{queueSubmitting ? <Loader2 size={16} className="spin" /> : busy ? "插入当前轮" : <Send size={16} />}</button></div></div>
           </form>
         </section>
 
@@ -1239,7 +1424,7 @@ export default function App() {
             <button className={rightTab === "stats" ? "active" : ""} onClick={() => setRightTab("stats")}><BarChart3 size={15} />统计</button>
           </nav>
           <div className="right-content" key={rightTab === "tools" ? `tools:${selectedToolGroupId}` : rightTab}>
-            {rightTab === "tools" && <ToolPanel groups={toolGroups} selectedId={selectedToolGroupId} onSelect={setSelectedToolTurnId} />}
+            {rightTab === "tools" && <ToolPanel groups={toolGroups} selectedId={selectedToolGroupId} onSelect={setSelectedToolTurnId} sessionId={sessionId} />}
             {rightTab === "files" && (
               <>
                 <div className="side-title"><span>文件</span><small>{files.filter((item) => item.type === "file").length}</small></div>

@@ -560,14 +560,23 @@ class SessionStore:
         if path.parent.resolve() != self.root.resolve() or path.name != f"{session_id}.jsonl" or path.is_symlink():
             raise ValueError("Session path is outside the session store")
         artifact_dir = artifacts_root / session_id
+        handoff_root = self.root.parent / "handoffs"
+        handoff_dir = handoff_root / session_id
         if artifact_dir.exists():
             if artifact_dir.parent.resolve() != artifacts_root.resolve() or artifact_dir.is_symlink() or (
                 hasattr(artifact_dir, "is_junction") and artifact_dir.is_junction()
             ):
                 raise ValueError("Artifact path is unsafe")
+        if handoff_dir.exists():
+            if handoff_dir.parent.resolve() != handoff_root.resolve() or handoff_dir.is_symlink() or (
+                hasattr(handoff_dir, "is_junction") and handoff_dir.is_junction()
+            ):
+                raise ValueError("Handoff path is unsafe")
         path.unlink()
         if artifact_dir.exists():
             shutil.rmtree(artifact_dir)
+        if handoff_dir.exists():
+            shutil.rmtree(handoff_dir)
         self._sessions.pop(session.header.id, None)
         self._paths.pop(session.header.id, None)
 

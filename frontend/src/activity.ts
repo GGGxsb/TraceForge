@@ -46,7 +46,7 @@ export function buildActivityGroups(entries: SessionEntry[]): ActivityGroup[] {
       groups.push(current);
       continue;
     }
-    if (!["tool_call", "tool_result", "model_reasoning"].includes(entry.type)) continue;
+    if (!["tool_call", "tool_result", "model_reasoning", "subagent_spawn", "subagent_update"].includes(entry.type)) continue;
     if (!current) {
       current = { id: `history-${entry.id}`, turn: null, entries: [], toolCount: 0, reasoningCount: 0 };
       groups.push(current);

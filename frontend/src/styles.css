@@ -269,12 +269,22 @@ pre, code { font-family: "Cascadia Code", "Consolas", monospace; }
 .composer-options { display: flex; align-items: center; gap: 13px; min-width: 0; }
 .permission-picker { display: inline-flex; align-items: center; gap: 5px; min-height: 30px; padding: 0 5px 0 8px; border: 1px solid #36524e; border-radius: 7px; color: #9ddbc8; background: #10241f; }
 .permission-picker.full-access { border-color: #705039; color: #f5c08c; background: #30241e; }
-.permission-picker select { max-width: 105px; border: 0; outline: 0; color: inherit; background: transparent; font-size: 11px; font-weight: 600; cursor: pointer; }
+.permission-picker select { max-width: 125px; border: 0; outline: 0; color: inherit; background: transparent; font-size: 11px; font-weight: 600; cursor: pointer; }
 .permission-picker select option { color: #e5eeee; background: #16232a; }
 .permission-picker:has(select:disabled) { opacity: .58; }
 .composer-footer button { width: 33px; height: 32px; display: grid; place-items: center; border: 0; border-radius: 8px; color: #09251c; background: var(--accent); }
 .composer-footer button:hover:not(:disabled) { background: #8ae9d2; }
 .composer-footer button:disabled { background: #304039; color: #6f8980; }
+.composer-actions { display: flex; align-items: center; gap: 7px; }
+.composer-footer .composer-actions button { width: auto; min-width: 33px; padding: 0 10px; font-size: 11px; font-weight: 650; white-space: nowrap; }
+.composer-footer .composer-actions .queue-after-run { border: 1px solid #49635f; color: #b5d7ce; background: #213430; }
+.composer-footer .composer-actions .queue-after-run:hover:not(:disabled) { background: #2c4841; }
+.queued-messages { display: grid; gap: 4px; max-height: 130px; margin: 0 23px 8px; overflow: auto; }
+.queued-message { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 6px 9px; border: 1px solid #36524e; border-radius: 7px; color: var(--text); background: #172a2b; font-size: 11px; }
+.queued-message-timing { flex: none; color: #8fdac5; }
+.queued-message-content { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.queued-message button { flex: none; display: grid; place-items: center; border: 0; border-radius: 4px; color: #b5d7ce; background: transparent; font-size: 11px; cursor: pointer; }
+.queued-message button:hover { color: white; background: #36524e; }
 
 .right-panel { display: grid; grid-template-rows: 53px minmax(0,1fr); border-left: 1px solid var(--line); background: var(--right); }
 .right-tabs { display: grid; grid-template-columns: repeat(7, minmax(0,1fr)); border-bottom: 1px solid var(--line); }
@@ -489,3 +499,12 @@ pre, code { font-family: "Cascadia Code", "Consolas", monospace; }
   .brand { min-width: 225px; }
   .approval-dock { flex-wrap: wrap; }
 }
+.handoff-brief { white-space: pre-wrap; }
+.subagent-trace { margin-top: 12px; border-top: 1px solid var(--border, #e3e6eb); padding-top: 10px; }
+.subagent-toggle { display: flex; align-items: center; gap: 6px; width: 100%; text-align: left; padding: 7px 0; background: transparent; border: 0; color: inherit; cursor: pointer; }
+.subagent-trace-body { padding: 6px 0; }
+.subagent-trace-body details { margin: 8px 0; }
+.subagent-trace-body summary { cursor: pointer; font-size: 12px; }
+.subagent-trace-body pre { max-height: 320px; overflow: auto; }
+.subagent-scope, .subagent-evidence { display: block; font-size: 11px; color: var(--muted, #6b7280); overflow-wrap: anywhere; margin: 7px 0; }
+.subagent-report { margin: 8px 0 14px; }

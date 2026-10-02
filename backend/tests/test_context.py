@@ -1,10 +1,12 @@
 from pathlib import Path
+import subprocess
 
 import pytest
 
 from traceforge.context import BranchService, CompactionService, ContextProjector
 from traceforge.models import SessionHeader
-from traceforge.storage import JsonlSession
+from traceforge.memory import WorkspaceHandoffStore
+from traceforge.storage import JsonlSession, SessionStore
 
 from .fakes import FakeModelAdapter
 
@@ -24,6 +26,29 @@ class CapturingSummaryAdapter(FakeModelAdapter):
         return await super().summarize_branch(transcript)
 
 
+class CapturingHandoffAdapter(FakeModelAdapter):
+    def __init__(self):
+        super().__init__()
+        self.transcript = ""
+
+    async def summarize_compaction(self, transcript, previous):
+        self.transcript = transcript
+        return await super().summarize_compaction(transcript, previous)
+
+
+class FailingCompactionAdapter(FakeModelAdapter):
+    async def summarize_compaction(self, transcript, previous):
+        raise RuntimeError("summary unavailable")
+
+
+def attach_handoff(compactor, session, adapter):
+    data_root = session.path.parent.parent if session.path.parent.name == "sessions" else session.path.parent
+    compactor.handoff_store = WorkspaceHandoffStore(
+        data_root / "handoffs", SessionStore(data_root / "sessions"), adapter, compactor,
+    )
+    return compactor.handoff_store
+
+
 @pytest.mark.asyncio
 async def test_clarification_answers_keep_their_questions_in_model_context(tmp_path: Path):
     session = JsonlSession.create(
@@ -40,7 +65,7 @@ async def test_clarification_answers_keep_their_questions_in_model_context(tmp_p
 
 
 @pytest.mark.asyncio
-async def test_compaction_projects_summary_and_recent_raw_entries(tmp_path: Path):
+async def test_context_checkpoint_keeps_recent_raw_without_projecting_handoff(tmp_path: Path):
     session = JsonlSession.create(
         tmp_path / "s.jsonl",
         SessionHeader(id="s", workspace_id="w", workspace=str(tmp_path)),
@@ -49,14 +74,119 @@ async def test_compaction_projects_summary_and_recent_raw_entries(tmp_path: Path
     await session.append("assistant_message", {"content": "old answer " * 200})
     recent = await session.append("user_message", {"content": "recent"})
     await session.append("assistant_message", {"content": "recent answer"})
-    compactor = CompactionService(FakeModelAdapter(), 200, 50, 50)
+    adapter = FakeModelAdapter()
+    compactor = CompactionService(adapter, 200, 50, 50)
+    attach_handoff(compactor, session, adapter)
     compacted = await compactor.compact(session)
     assert compacted is not None
+    assert compacted.type == "context_checkpoint"
     projected = ContextProjector(200, 50).project(session)
-    assert any(item.get("role") == "developer" for item in projected.input_items)
+    assert not any("history summarized" in item.get("content", "") for item in projected.input_items)
+    assert any("read_project_handoff" in item.get("content", "") for item in projected.input_items)
     assert any(item.get("content") == "recent" for item in projected.input_items)
     assert first.id in [entry.id for entry in session.entries]
     assert recent.id in [entry.id for entry in session.entries]
+    assert (session.path.parent / compacted.payload["handoff_file"]).is_file()
+
+
+@pytest.mark.asyncio
+async def test_handoff_uses_git_facts_and_preserves_clarification_and_tool_evidence(tmp_path: Path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    def git(*args: str) -> str:
+        return subprocess.run(["git", "-C", str(repo), *args], capture_output=True,
+                              text=True, check=True).stdout.strip()
+
+    git("init")
+    (repo / "src.py").write_text("value = 1\n", encoding="utf-8")
+    git("add", "src.py")
+    git("-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "baseline")
+    (repo / "src.py").write_text("value = 2\n", encoding="utf-8")
+    (repo / "new.txt").write_text("new file\n", encoding="utf-8")
+
+    session = JsonlSession.create(
+        tmp_path / "data" / "sessions" / "s.jsonl",
+        SessionHeader(id="s", workspace_id="w", workspace=str(repo)),
+    )
+    original = await session.append("user_message", {"content": "修复项目 " * 300})
+    await session.append("clarification_answer", {"question": "目标？", "answer": "保留现有 API"})
+    await session.append("tool_call", {"call_id": "test", "name": "run_command", "arguments": {"command": "pytest"}})
+    await session.append("tool_result", {
+        "call_id": "test", "tool_name": "run_command", "output": "2 passed", "exit_code": 0,
+        "artifact_id": "artifact_test", "is_error": False,
+    })
+    await session.append("user_message", {"content": "继续"})
+    await session.append("assistant_message", {"content": "下一步"})
+    adapter = CapturingHandoffAdapter()
+
+    compactor = CompactionService(adapter, 2000, 200, 100)
+    attach_handoff(compactor, session, adapter)
+    compacted = await compactor.compact(session)
+
+    assert compacted is not None
+    state = compactor.handoff_store.read(session.header.workspace_id)["repository_state"]
+    assert state["kind"] == "git"
+    assert state["head"] == git("rev-parse", "HEAD")
+    assert any("src.py" in line for line in state["status_lines"])
+    assert any("new.txt" in line for line in state["status_lines"])
+    assert "clarification_answer 目标？: 保留现有 API" in adapter.transcript
+    assert "exit_code=0" in adapter.transcript
+    assert "artifact_test" in adapter.transcript
+    assert compacted.payload["handoff_mode"] == "model"
+    handoff = session.path.parent.parent / compacted.payload["handoff_file"]
+    assert handoff.is_file()
+    assert "# TraceForge 项目交接" in handoff.read_text(encoding="utf-8")
+    assert state["head"] in handoff.read_text(encoding="utf-8")
+    assert original.id in session.by_id
+    assert "src.py" not in str(ContextProjector(2000, 200).project(session).input_items)
+
+
+@pytest.mark.asyncio
+async def test_handoff_file_is_still_written_when_summary_model_fails(tmp_path: Path):
+    session = JsonlSession.create(
+        tmp_path / "s.jsonl",
+        SessionHeader(id="s", workspace_id="w", workspace=str(tmp_path)),
+    )
+    await session.append("user_message", {"content": "修复错误 " * 300})
+    await session.append("assistant_message", {"content": "已检查日志"})
+    await session.append("user_message", {"content": "继续"})
+    await session.append("assistant_message", {"content": "下一步"})
+
+    adapter = FailingCompactionAdapter()
+    compactor = CompactionService(adapter, 2000, 200, 100)
+    attach_handoff(compactor, session, adapter)
+    compacted = await compactor.compact(session)
+
+    assert compacted is not None
+    assert compacted.payload["handoff_mode"] == "fallback"
+    handoff = session.path.parent / compacted.payload["handoff_file"]
+    assert "摘要来源：fallback" in handoff.read_text(encoding="utf-8")
+
+
+@pytest.mark.asyncio
+async def test_handoff_model_input_is_bounded_but_keeps_goal_and_recent_evidence(tmp_path: Path):
+    session = JsonlSession.create(
+        tmp_path / "s.jsonl",
+        SessionHeader(id="s", workspace_id="w", workspace=str(tmp_path)),
+    )
+    await session.append("user_message", {"content": "EARLY_GOAL 修复登录问题"})
+    await session.append("assistant_message", {"content": "旧输出 " * 10000})
+    await session.append("tool_call", {"call_id": "test", "name": "run_command", "arguments": {"command": "pytest"}})
+    await session.append("tool_result", {
+        "call_id": "test", "tool_name": "run_command", "output": "2 passed", "exit_code": 0,
+    })
+    await session.append("user_message", {"content": "继续"})
+    await session.append("assistant_message", {"content": "处理中"})
+    adapter = CapturingHandoffAdapter()
+
+    compactor = CompactionService(adapter, 2000, 200, 100)
+    attach_handoff(compactor, session, adapter)
+    assert await compactor.compact(session) is not None
+
+    assert len(adapter.transcript) <= 8000
+    assert "EARLY_GOAL" in adapter.transcript
+    assert "2 passed" in adapter.transcript
 
 
 @pytest.mark.asyncio
@@ -85,7 +215,9 @@ async def test_multiple_compactions_keep_raw_jsonl_and_valid_recent_tool_pair(tm
     await session.append("assistant_message", {"content": "first answer " * 300})
     await session.append("user_message", {"content": "middle request"})
     await session.append("assistant_message", {"content": "middle answer"})
-    compactor = CompactionService(FakeModelAdapter(), 300, 50, 40)
+    adapter = FakeModelAdapter()
+    compactor = CompactionService(adapter, 300, 50, 40)
+    attach_handoff(compactor, session, adapter)
     assert await compactor.compact(session) is not None
 
     await session.append("user_message", {"content": "recent request"})
@@ -97,11 +229,90 @@ async def test_multiple_compactions_keep_raw_jsonl_and_valid_recent_tool_pair(tm
     await session.append("assistant_message", {"content": "recent answer"})
     assert await compactor.compact(session) is not None
 
-    assert session.path.read_text(encoding="utf-8").count('"type":"compaction"') == 2
+    assert session.path.read_text(encoding="utf-8").count('"type":"context_checkpoint"') == 2
     assert early in session.path.read_text(encoding="utf-8")
     projected = ContextProjector(300, 50).project(session)
     assert any(item.get("content") == "recent request" for item in projected.input_items)
     assert session.validate_tool_pairs() == []
+
+
+@pytest.mark.asyncio
+async def test_compaction_can_cut_inside_one_long_run_at_a_model_round(tmp_path: Path):
+    session = JsonlSession.create(
+        tmp_path / "s.jsonl",
+        SessionHeader(id="s", workspace_id="w", workspace=str(tmp_path)),
+    )
+    await session.append("user_message", {"content": "检查项目并修复问题"})
+    await session.append("run_state", {"status": "executing", "round": 1})
+    await session.append("tool_call", {"call_id": "old", "name": "read_file", "arguments": {}})
+    old_result = await session.append("tool_result", {
+        "call_id": "old", "tool_name": "read_file", "output": "old evidence " * 500,
+    })
+    kept_round = await session.append("run_state", {"status": "executing", "round": 2})
+    await session.append("tool_call", {"call_id": "recent", "name": "read_file", "arguments": {}})
+    await session.append("tool_result", {
+        "call_id": "recent", "tool_name": "read_file", "output": "recent evidence",
+    })
+
+    adapter = FakeModelAdapter()
+    compactor = CompactionService(adapter, 2000, 200, 100)
+    attach_handoff(compactor, session, adapter)
+    compacted = await compactor.compact(session)
+
+    assert compacted is not None
+    assert compacted.payload["first_kept_entry_id"] == kept_round.id
+    projected = ContextProjector(2000, 200).project(session)
+    assert old_result.id not in projected.source_entry_ids
+    assert "recent" in str(projected.input_items)
+    assert session.validate_tool_pairs() == []
+    assert old_result.id in session.by_id
+
+
+@pytest.mark.asyncio
+async def test_compaction_can_summarize_one_oversized_completed_batch(tmp_path: Path):
+    session = JsonlSession.create(
+        tmp_path / "s.jsonl",
+        SessionHeader(id="s", workspace_id="w", workspace=str(tmp_path)),
+    )
+    user = await session.append("user_message", {"content": "检查大型日志"})
+    await session.append("run_state", {"status": "executing", "round": 1})
+    await session.append("tool_call", {"call_id": "large", "name": "read_file", "arguments": {}})
+    result = await session.append("tool_result", {
+        "call_id": "large", "tool_name": "read_file", "output": "log line " * 3000,
+    })
+
+    adapter = FakeModelAdapter()
+    compactor = CompactionService(adapter, 2000, 200, 100)
+    attach_handoff(compactor, session, adapter)
+    compacted = await compactor.compact(session)
+
+    assert compacted is not None
+    assert compacted.payload["first_kept_entry_id"] is None
+    projected = ContextProjector(2000, 200).project(session)
+    assert projected.source_entry_ids == [compacted.id]
+    assert user.id in session.by_id and result.id in session.by_id
+    assert session.validate_tool_pairs() == []
+
+
+@pytest.mark.asyncio
+async def test_compaction_keeps_unanswered_new_user_request(tmp_path: Path):
+    session = JsonlSession.create(
+        tmp_path / "s.jsonl",
+        SessionHeader(id="s", workspace_id="w", workspace=str(tmp_path)),
+    )
+    await session.append("user_message", {"content": "old"})
+    await session.append("assistant_message", {"content": "done"})
+    new_request = await session.append("user_message", {"content": "new request " * 3000})
+    await session.append("run_state", {"status": "executing", "round": 1})
+
+    adapter = FakeModelAdapter()
+    compactor = CompactionService(adapter, 2000, 200, 100)
+    attach_handoff(compactor, session, adapter)
+    compacted = await compactor.compact(session)
+
+    assert compacted is not None
+    assert compacted.payload["first_kept_entry_id"] == new_request.id
+    assert new_request.id in ContextProjector(2000, 200).project(session).source_entry_ids
 
 
 @pytest.mark.asyncio
@@ -335,7 +546,7 @@ async def test_branch_summary_reuses_checkpoint_and_limits_model_input(tmp_path:
     assert len(adapter.transcript) <= 1600
     assert "CHECKPOINT_MARKER" in adapter.transcript
     assert "RECENT_MARKER" in adapter.transcript
-    assert "OLD_MARKER" not in adapter.transcript
+    assert "OLD_MARKER" in adapter.transcript
     assert len(summary.payload["source_entry_ids"]) == 11
 
 

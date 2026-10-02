@@ -13,6 +13,8 @@ class CodeTask:
     hidden_test: str | None = None
     answer_contains: str | None = None
     expected_paths: tuple[str, ...] = ()
+    suite: str = "smoke"
+    reference_files: dict[str, str] | None = None
 
 
 TASKS = (
